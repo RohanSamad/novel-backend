@@ -12,12 +12,11 @@ class Novel extends Model
     protected $fillable = [
         'title',
         'author',
+        'author_id',
         'publisher',
         'cover_image_url',
         'synopsis',
         'status',
-        'genre',
-        'author_id',
         'publishing_year',
     ];
 
@@ -50,7 +49,6 @@ class Novel extends Model
         return $this->hasOne(FeaturedNovel::class, 'novel_id');
     }
 
-    // Validate status values
     public static $validStatuses = ['completed', 'ongoing', 'hiatus'];
 
     public function setStatusAttribute($value)
