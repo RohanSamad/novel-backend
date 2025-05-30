@@ -17,7 +17,6 @@ class CreateAuthorsTable extends Migration
             $table->timestamps();
         });
 
-        // Add trigram index
         if ($this->pgTrgmExtensionExists()) {
             DB::statement('CREATE INDEX authors_name_trgm_idx ON authors USING gin (name gin_trgm_ops)');
         }
@@ -34,27 +33,9 @@ class CreateAuthorsTable extends Migration
     protected function seedDefaultAuthors()
     {
         $authors = [
-            [
-                'name' => 'Jane Austen',
-                'bio' => 'Renowned English novelist known for her romantic fiction.',
-                'avatar_url' => 'https://example.com/avatars/jane-austen.jpg',
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-            [
-                'name' => 'Mark Twain',
-                'bio' => 'American writer and humorist, famous for his adventure stories.',
-                'avatar_url' => 'https://example.com/avatars/mark-twain.jpg',
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-            [
-                'name' => 'J.K. Rowling',
-                'bio' => 'British author best known for the Harry Potter series.',
-                'avatar_url' => 'https://example.com/avatars/jk-rowling.jpg',
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
+            ['name' => 'Jane Austen', 'bio' => 'Renowned English novelist known for her romantic fiction.', 'avatar_url' => 'https://example.com/avatars/jane-austen.jpg', 'created_at' => now(), 'updated_at' => now()],
+            ['name' => 'Mark Twain', 'bio' => 'American writer and humorist, famous for his adventure stories.', 'avatar_url' => 'https://example.com/avatars/mark-twain.jpg', 'created_at' => now(), 'updated_at' => now()],
+            ['name' => 'J.K. Rowling', 'bio' => 'British author best known for the Harry Potter series.', 'avatar_url' => 'https://example.com/avatars/jk-rowling.jpg', 'created_at' => now(), 'updated_at' => now()],
         ];
 
         DB::table('authors')->insert($authors);

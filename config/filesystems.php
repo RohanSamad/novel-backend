@@ -47,6 +47,24 @@ return [
             'report' => false,
         ],
 
+         // New disk for novel cover images
+        'novel_covers_v2' => [
+            'driver' => 'local',
+            'root' => public_path('novel_covers_v2'),
+            'url' => env('APP_URL') . '/novel_covers_v2',
+            'visibility' => 'public',
+            'throw' => false,
+        ],
+
+        // New disk for chapter audio files
+         'novel_chapter_audio_bucket' => [
+            'driver' => 'local',
+            'root' => public_path('novel_chapter_audio_bucket'),
+            'url' => env('APP_URL') . '/novel_chapter_audio_bucket', // Updated to direct path
+            'visibility' => 'public',
+            'throw' => false,
+        ],
+        
         's3' => [
             'driver' => 's3',
             'key' => env('AWS_ACCESS_KEY_ID'),

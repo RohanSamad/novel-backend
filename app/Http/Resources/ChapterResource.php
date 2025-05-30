@@ -13,7 +13,7 @@ class ChapterResource extends JsonResource
             'novel_id' => (int) $this->novel_id,
             'chapter_number' => $this->chapter_number,
             'title' => $this->title,
-            'audio_url' => $this->audio_url,
+            'audio_url' =>$this->audio_url ? asset($this->audio_url) : null, // $this->audio_url,
             'content_text' => $this->content_text,
             'order_index' => $this->order_index,
             'created_at' => $this->created_at->toIso8601String(),

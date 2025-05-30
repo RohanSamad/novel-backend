@@ -12,7 +12,7 @@ class AuthorResource extends JsonResource
             'id' => (int) $this->id,
             'name' => $this->name,
             'bio' => $this->bio,
-            'avatar_url' => $this->avatar_url,
+            'avatar_url' => $this->avatar_url ? asset($this->avatar_url):null,
             'created_at' => $this->created_at->toIso8601String(),
             'updated_at' => $this->updated_at->toIso8601String(),
         ];

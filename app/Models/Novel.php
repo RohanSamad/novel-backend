@@ -11,7 +11,6 @@ class Novel extends Model
 
     protected $fillable = [
         'title',
-        'author',
         'author_id',
         'publisher',
         'cover_image_url',

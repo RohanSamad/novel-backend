@@ -14,7 +14,6 @@ class CreateNovelsTable extends Migration
         Schema::create('novels', function (Blueprint $table) {
             $table->id();
             $table->string('title');
-            $table->string('author');
             $table->unsignedBigInteger('author_id');
             $table->string('publisher');
             $table->string('cover_image_url');
@@ -26,18 +25,14 @@ class CreateNovelsTable extends Migration
             $table->foreign('author_id')->references('id')->on('authors')->onDelete('cascade');
             $table->index('author_id', 'novels_author_id_idx');
             $table->index('title', 'novels_title_idx');
-            $table->index('author', 'novels_author_idx');
             $table->index('status', 'novels_status_idx');
         });
 
-        // Add constraints
         DB::statement('ALTER TABLE novels ADD CONSTRAINT novels_title_length_check CHECK (length(title) >= 1 AND length(title) <= 255)');
         DB::statement('ALTER TABLE novels ADD CONSTRAINT novels_synopsis_length_check CHECK (length(synopsis) >= 10)');
 
-        // Add trigram indexes
         if ($this->pgTrgmExtensionExists()) {
             DB::statement('CREATE INDEX novels_title_trgm_idx ON novels USING gin (title gin_trgm_ops)');
-            DB::statement('CREATE INDEX novels_author_trgm_idx ON novels USING gin (author gin_trgm_ops)');
             DB::statement('CREATE INDEX novels_synopsis_trgm_idx ON novels USING gin (synopsis gin_trgm_ops)');
         }
 
@@ -57,7 +52,6 @@ class CreateNovelsTable extends Migration
         $novels = [
             [
                 'title' => 'Pride and Prejudice',
-                'author' => 'Jane Austen',
                 'author_id' => $authors['Jane Austen'],
                 'publisher' => 'T. Egerton',
                 'cover_image_url' => 'https://example.com/covers/pride-and-prejudice.jpg',
@@ -69,7 +63,6 @@ class CreateNovelsTable extends Migration
             ],
             [
                 'title' => 'The Adventures of Tom Sawyer',
-                'author' => 'Mark Twain',
                 'author_id' => $authors['Mark Twain'],
                 'publisher' => 'American Publishing Company',
                 'cover_image_url' => 'https://example.com/covers/tom-sawyer.jpg',
@@ -81,7 +74,6 @@ class CreateNovelsTable extends Migration
             ],
             [
                 'title' => 'Harry Potter and the Philosopher\'s Stone',
-                'author' => 'J.K. Rowling',
                 'author_id' => $authors['J.K. Rowling'],
                 'publisher' => 'Bloomsbury',
                 'cover_image_url' => 'https://example.com/covers/harry-potter.jpg',
@@ -100,7 +92,6 @@ class CreateNovelsTable extends Migration
     {
         if ($this->pgTrgmExtensionExists()) {
             DB::statement('DROP INDEX IF EXISTS novels_title_trgm_idx');
-            DB::statement('DROP INDEX IF EXISTS novels_author_trgm_idx');
             DB::statement('DROP INDEX IF EXISTS novels_synopsis_trgm_idx');
         }
 

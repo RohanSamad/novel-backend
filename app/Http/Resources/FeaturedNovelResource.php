@@ -23,7 +23,7 @@ class FeaturedNovelResource extends JsonResource
                     'name' => $this->novel->author->name,
                 ] : null,
                 'publisher' => $this->novel->publisher,
-                'cover_image_url' => $this->novel->cover_image_url,
+                'cover_image_url' => $this->novel->cover_image_url ? asset($this->novel->cover_image_url):null,
                 'synopsis' => $this->novel->synopsis,
                 'status' => $this->novel->status,
                 'publishing_year' => $this->novel->publishing_year,

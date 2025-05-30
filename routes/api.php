@@ -13,6 +13,7 @@ Route::post('/login', [UserAuthController::class, 'login']);
 Route::post('/register', [UserAuthController::class, 'register']);
 
 Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/novels/search', [NovelController::class, 'search']);
     Route::get('/check-session', [UserAuthController::class, 'checkSession']);
     Route::post('/logout', [UserAuthController::class, 'logout']);
     Route::prefix('authors')->group(function () {
@@ -28,7 +29,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/', [NovelController::class, 'index'])->name('novels.index');
         Route::get('/{id}', [NovelController::class, 'show'])->name('novels.show');
         Route::get('/author/{authorId}', [NovelController::class, 'byAuthor'])->name('novels.byAuthor');
-        Route::get('/search', [NovelController::class, 'search'])->name('novels.search');
+       // Route::get('/search', [NovelController::class, 'search'])->name('novels.search');
         Route::get('/genre/{genreSlug}', [NovelController::class, 'byGenre'])->name('novels.byGenre');
     });
     Route::prefix('featured-novels')->group(function () {
@@ -45,6 +46,7 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::delete('/{id}', [ChapterController::class, 'destroy'])->name('chapters.destroy');
         });
         Route::prefix('novels')->group(function () {
+            Route::post('/', [NovelController::class, 'store'])->name('novels.store');
             Route::delete('/{id}', [NovelController::class, 'destroy'])->name('novels.destroy');
         });
         Route::prefix('featured-novels')->group(function () {

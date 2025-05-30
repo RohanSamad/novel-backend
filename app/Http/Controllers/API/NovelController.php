@@ -3,8 +3,10 @@
 namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\StoreNovelRequest;
 use App\Http\Resources\NovelResource;
 use App\Http\Resources\NovelCollection;
+use App\Models\Author;
 use App\Models\Novel;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -13,6 +15,64 @@ use Illuminate\Support\Facades\Validator;
 
 class NovelController extends Controller
 {
+
+     /**
+     * Store a new novel.
+     *
+     * @param  \App\Http\Requests\StoreNovelRequest  $request
+     * @return \App\Http\Resources\NovelResource
+     */
+    public function store(StoreNovelRequest $request)
+    {
+        try {
+            $data = $request->validated();
+
+            // Check or create author
+            $author = Author::firstOrCreate(
+                ['name' => $data['author']],
+                ['name' => $data['author']]
+            );
+            $authorId = $author->id;
+
+            // Handle cover image upload
+            $file = $request->file('cover_image');
+            if ($file->getSize() > 2 * 1024 * 1024) {
+                throw new \Exception('Image size must be less than 2MB');
+            }
+            $timestamp = time();
+            $fileExt = $file->getClientOriginalExtension();
+            $fileName = "{$timestamp}.{$fileExt}";
+            $path = $file->storeAs('', $fileName, 'novel_covers_v2');
+            $coverImageUrl = "novel_covers_v2/{$fileName}";
+
+            // Create the novel
+            $novel = Novel::create([
+                'title' => $data['title'],
+                'author' => $data['author'],
+                'author_id' => $authorId,
+                'publisher' => $data['publisher'],
+                'cover_image_url' => $coverImageUrl,
+                'synopsis' => $data['synopsis'],
+                'status' => $data['status'],
+                'publishing_year' => $data['publishing_year'],
+            ]);
+
+            // Attach genres
+            $novel->genres()->attach($data['genres']);
+
+            // Load relationships for response
+            $novel->load('genres', 'author');
+
+            return new NovelResource($novel);
+        } catch (\Exception $e) {
+            // Roll back image upload if novel creation fails
+            if (isset($fileName) && Storage::exists("public/novel-covers/{$fileName}")) {
+                Storage::delete("public/novel-covers/{$fileName}");
+            }
+            Log::error('Failed to create novel', ['error' => $e->getMessage()]);
+            return response()->json(['error' => $e->getMessage()], 400);
+        }
+    }
     /**
      * Fetch all novels with genres, ordered by created_at.
      *
@@ -89,7 +149,7 @@ class NovelController extends Controller
      * @param  int  $id
      * @return \Illuminate\Http\JsonResponse
      */
-    public function destroy($id)
+   /* public function destroy($id)
     {
         if (!is_numeric($id) || $id <= 0) {
             return response()->json(['error' => 'Invalid novel ID'], 422);
@@ -113,6 +173,32 @@ class NovelController extends Controller
             Log::error('Failed to delete novel', ['id' => $id, 'error' => $e->getMessage()]);
             return response()->json(['error' => 'Failed to delete novel: ' . $e->getMessage()], 500);
         }
+    }*/
+
+    public function destroy($id)
+    {
+        if (!is_numeric($id) || $id <= 0) {
+            return response()->json(['error' => 'Invalid novel ID'], 422);
+        }
+
+        $novel = Novel::find($id);
+        if (!$novel) {
+            return response()->json(['error' => 'Novel not found'], 404);
+        }
+
+        try {
+            // Delete cover image if it exists
+            if ($novel->cover_image_url) {
+                $fileName = basename($novel->cover_image_url);
+                Storage::disk('novel_covers_v2')->delete($fileName);
+            }
+
+            $novel->delete();
+            return response()->json(['message' => 'Novel deleted successfully', 'id' => (int) $id]);
+        } catch (\Exception $e) {
+            Log::error('Failed to delete novel', ['id' => $id, 'error' => $e->getMessage()]);
+            return response()->json(['error' => 'Failed to delete novel: ' . $e->getMessage()], 500);
+        }
     }
 
     /**
@@ -121,40 +207,31 @@ class NovelController extends Controller
      * @param  \Illuminate\Http\Request  $request
      * @return \App\Http\Resources\NovelCollection
      */
-    public function search(Request $request)
-    {
-        $query = $request->query('q');
-        if (!$query) {
-            try {
-                $novels = Novel::with('genres', 'author')
-                    ->orderBy('created_at', 'desc')
-                    ->get();
-                return new NovelCollection($novels);
-            } catch (\Exception $e) {
-                Log::error('Failed to fetch all novels', ['error' => $e->getMessage()]);
-                return response()->json(['error' => 'Failed to fetch novels: ' . $e->getMessage()], 500);
-            }
-        }
-
-        try {
-            $searchTerms = explode(' ', strtolower($query));
-            $novels = Novel::with('genres', 'author')
-                ->where(function ($q) use ($searchTerms) {
-                    foreach ($searchTerms as $term) {
-                        if ($term) {
-                            $q->whereRaw('LOWER(title) LIKE ?', ['%' . $term . '%']);
-                        }
-                    }
-                })
-                ->orderBy('created_at', 'desc')
-                ->get();
-
-            return new NovelCollection($novels);
-        } catch (\Exception $e) {
-            Log::error('Failed to search novels', ['query' => $query, 'error' => $e->getMessage()]);
-            return response()->json(['error' => 'Failed to search novels: ' . $e->getMessage()], 500);
-        }
+  public function search(Request $request)
+{
+    $query = $request->query('q');
+    if (!$query) {
+        // Return all novels if no query
+        $novels = Novel::with('genres', 'author')
+            ->orderBy('created_at', 'desc')
+            ->get();
+        return new NovelCollection($novels);
     }
+
+    $searchTerms = explode(' ', strtolower($query));
+    $novels = Novel::with('genres', 'author')
+        ->where(function ($q) use ($searchTerms) {
+            foreach ($searchTerms as $term) {
+                if ($term) {
+                    $q->whereRaw('LOWER(title) LIKE ?', ['%' . $term . '%']);
+                }
+            }
+        })
+        ->orderBy('created_at', 'desc')
+        ->get();
+
+    return new NovelCollection($novels);
+}
 
     /**
      * Filter novels by genre slug.
