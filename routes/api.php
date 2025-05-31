@@ -38,7 +38,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/novels/search', [NovelController::class, 'search']);
     Route::get('/check-session', [UserAuthController::class, 'checkSession']);
     Route::post('/logout', [UserAuthController::class, 'logout']);
-   
+    Route::post('/verify-admin', [UserAuthController::class, 'verifyAdmin']); 
   
   
     // Admin-only routes

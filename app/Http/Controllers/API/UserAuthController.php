@@ -230,4 +230,43 @@ class UserAuthController extends Controller
             'userId' => $request->userId,
         ], 200);
     }
+
+     /**
+     * Verify admin access by re-authenticating with password
+     */
+    public function verifyAdmin(Request $request)
+    {
+        try {
+            // Ensure user is authenticated
+            $user = Auth::user();
+            if (!$user || !$user->email) {
+                return response()->json(['error' => 'No user session found'], 401);
+            }
+
+            // Validate password input
+            $validator = Validator::make($request->all(), [
+                'password' => 'required|string',
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json(['error' => $validator->errors()->first()], 422);
+            }
+
+            // Verify password
+            if (!Hash::check($request->password, $user->password)) {
+                return response()->json(['error' => 'Invalid password'], 401);
+            }
+
+            // Check if user is an admin
+            $profile = $user->profile;
+            if (!$profile || $profile->role !== 'admin') {
+                return response()->json(['error' => 'User is not an admin'], 403);
+            }
+
+            return response()->json(['message' => 'Admin access verified'], 200);
+        } catch (\Exception $e) {
+            \Log::error('Admin verification failed', ['error' => $e->getMessage()]);
+            return response()->json(['error' => 'Admin verification failed: ' . $e->getMessage()], 500);
+        }
+    }
 }
