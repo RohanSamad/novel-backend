@@ -16,7 +16,7 @@ Route::post('/register', [UserAuthController::class, 'register']);
         Route::get('/', [AuthorController::class, 'index'])->name('authors.index');
         Route::get('/{id}', [AuthorController::class, 'show'])->name('authors.show');
     });
-    
+
     Route::prefix('chapters')->group(function () {
         Route::get('/novel/{novelId}', [ChapterController::class, 'index'])->name('chapters.index');
         Route::get('/novel/{novelId}/{chapterId}', [ChapterController::class, 'show'])->name('chapters.show');
@@ -30,15 +30,17 @@ Route::post('/register', [UserAuthController::class, 'register']);
         Route::get('/genre/{genreSlug}', [NovelController::class, 'byGenre'])->name('novels.byGenre');
     });
 
+      Route::prefix('featured-novels')->group(function () {
+        Route::get('/', [FeaturedNovelController::class, 'index'])->name('featured-novels.index');
+    });
+
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/novels/search', [NovelController::class, 'search']);
     Route::get('/check-session', [UserAuthController::class, 'checkSession']);
     Route::post('/logout', [UserAuthController::class, 'logout']);
    
   
-    Route::prefix('featured-novels')->group(function () {
-        Route::get('/', [FeaturedNovelController::class, 'index'])->name('featured-novels.index');
-    });
+  
     // Admin-only routes
     Route::middleware('admin')->group(function () {
         Route::get('/users', [UserAuthController::class, 'fetchUsers']);

@@ -6,8 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreNovelRequest;
 use App\Http\Resources\NovelResource;
 use App\Http\Resources\NovelCollection;
+use App\Http\Resources\NovelStatsResource;
 use App\Models\Author;
+use App\Models\Chapter;
 use App\Models\Novel;
+use App\Models\NovelRating;
+use App\Models\NovelStats;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -92,11 +96,17 @@ class NovelController extends Controller
         }
     }
 
-    /**
-     * Fetch a single novel by ID with genres.
+   /**
+     * Fetch a single novel by ID with genres, author, and stats.
      *
      * @param  int  $id
-     * @return \App\Http\Resources\NovelResource
+     * @return \Illuminate\Http\JsonResponse
+     */
+    /**
+     * Fetch a single novel by ID with genres, author, and stats.
+     *
+     * @param  int  $id
+     * @return \Illuminate\Http\JsonResponse
      */
     public function show($id)
     {
@@ -105,17 +115,55 @@ class NovelController extends Controller
                 return response()->json(['error' => 'Invalid novel ID'], 422);
             }
 
-            $novel = Novel::with('genres', 'author')->find($id);
+            $novel = Novel::with('genres', 'author', 'chapters', 'ratings', 'featured')->find($id);
 
             if (!$novel) {
                 return response()->json(['error' => 'Novel not found'], 404);
             }
 
-            return new NovelResource($novel);
+            // Fetch or calculate stats
+            $stats = $this->getNovelStats($id);
+
+            // Prepare response to match Supabase structure
+            return response()->json([
+                'data' => new NovelResource($novel),
+                'stats' => new NovelStatsResource($stats),
+            ]);
         } catch (\Exception $e) {
             Log::error('Failed to fetch novel', ['id' => $id, 'error' => $e->getMessage()]);
             return response()->json(['error' => 'Failed to fetch novel: ' . $e->getMessage()], 500);
         }
+    }
+
+    /**
+     * Helper method to fetch or calculate novel stats.
+     *
+     * @param  int  $novelId
+     * @return \App\Models\NovelStats
+     */
+    private function getNovelStats($novelId)
+    {
+        $stats = NovelStats::where('id', $novelId)->first();
+
+        if (!$stats) {
+            // Calculate stats if not found in novel_stats
+            $ratings = NovelRating::where('novel_id', $novelId)->get();
+            $ratingCount = $ratings->count();
+            $averageRating = $ratingCount > 0 ? $ratings->avg('rating') : 0;
+            $chapterCount = Chapter::where('novel_id', $novelId)->count();
+
+            $stats = NovelStats::create([
+                'id' => $novelId,
+                'title' => Novel::find($novelId)->title,
+                'chapter_count' => $chapterCount,
+                'reader_count' => 0,
+                'average_rating' => $averageRating,
+                'rating_count' => $ratingCount,
+                'total_views' => 0,
+            ]);
+        }
+
+        return $stats;
     }
 
     /**

@@ -43,6 +43,11 @@ class Novel extends Model
         return $this->hasMany(NovelRating::class, 'novel_id');
     }
 
+    public function stats()
+    {
+    return $this->hasOne(NovelStats::class, 'id');
+    }
+
     public function featured()
     {
         return $this->hasOne(FeaturedNovel::class, 'novel_id');
