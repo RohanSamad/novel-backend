@@ -11,12 +11,7 @@ use Illuminate\Support\Facades\Route;
 
 Route::post('/login', [UserAuthController::class, 'login']);
 Route::post('/register', [UserAuthController::class, 'register']);
-
-Route::middleware('auth:sanctum')->group(function () {
-    Route::get('/novels/search', [NovelController::class, 'search']);
-    Route::get('/check-session', [UserAuthController::class, 'checkSession']);
-    Route::post('/logout', [UserAuthController::class, 'logout']);
-    Route::prefix('authors')->group(function () {
+ Route::prefix('authors')->group(function () {
         Route::get('/', [AuthorController::class, 'index'])->name('authors.index');
         Route::get('/{id}', [AuthorController::class, 'show'])->name('authors.show');
     });
@@ -25,6 +20,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/novel/{novelId}/{chapterId}', [ChapterController::class, 'show'])->name('chapters.show');
         Route::get('/recent', [ChapterController::class, 'recent'])->name('chapters.recent');
     });
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/novels/search', [NovelController::class, 'search']);
+    Route::get('/check-session', [UserAuthController::class, 'checkSession']);
+    Route::post('/logout', [UserAuthController::class, 'logout']);
+   
     Route::prefix('novels')->group(function () {
         Route::get('/', [NovelController::class, 'index'])->name('novels.index');
         Route::get('/{id}', [NovelController::class, 'show'])->name('novels.show');
