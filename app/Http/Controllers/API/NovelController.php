@@ -9,6 +9,7 @@ use App\Http\Resources\NovelCollection;
 use App\Http\Resources\NovelStatsResource;
 use App\Models\Author;
 use App\Models\Chapter;
+use App\Models\Genre;
 use App\Models\Novel;
 use App\Models\NovelRating;
 use App\Models\NovelStats;
@@ -132,6 +133,108 @@ class NovelController extends Controller
         } catch (\Exception $e) {
             Log::error('Failed to fetch novel', ['id' => $id, 'error' => $e->getMessage()]);
             return response()->json(['error' => 'Failed to fetch novel: ' . $e->getMessage()], 500);
+        }
+    }
+
+
+    /**
+     * Update an existing novel.
+     */
+   public function update(Request $request, $id)
+{
+    try {
+        if (!is_numeric($id) || $id <= 0) {
+            return response()->json(['error' => 'Invalid novel ID'], 422);
+        }
+
+        $novel = Novel::find($id);
+        if (!$novel) {
+            return response()->json(['error' => 'Novel not found'], 404);
+        }
+
+        $data = $request->validate([
+            'title' => 'required|string|max:255',
+            'author' => 'required|string|max:255',
+            'publisher' => 'required|string|max:255',
+            'publishing_year' => 'required|integer|min:1800|max:' . (date('Y') + 1),
+            'cover_image' => 'nullable|image|max:2048', // For file upload
+            'synopsis' => 'required|string',
+            'status' => 'required|in:completed,ongoing,hiatus',
+            'genres' => 'nullable|array', // Multiple genres
+        ]);
+
+        // Handle cover image upload if provided
+        $coverImageUrl = $novel->cover_image_url;
+        if ($request->hasFile('cover_image')) {
+            $file = $request->file('cover_image');
+            if ($file->getSize() > 2 * 1024 * 1024) {
+                throw new \Exception('Image size must be less than 2MB');
+            }
+            $timestamp = time();
+            $fileExt = $file->getClientOriginalExtension();
+            $fileName = "{$timestamp}.{$fileExt}";
+            $coverImageUrl = $file->storeAs('', $fileName, 'novel_covers_v2');
+            $coverImageUrl = "novel_covers_v2/{$fileName}";
+
+            // Delete old image if it exists
+            if ($novel->cover_image_url) {
+                $oldFileName = basename($novel->cover_image_url);
+                Storage::disk('novel_covers_v2')->delete($oldFileName);
+            }
+        }
+
+        // Check or create author and update author_id
+        $author = Author::firstOrCreate(['name' => $data['author']], ['name' => $data['author']]);
+        $authorId = $author->id;
+
+        // Update novel
+        $novel->update([
+            'title' => $data['title'],
+            'author' => $data['author'], // Optional: Keep this if you want to store the name
+            'author_id' => $authorId,    // Update the relationship
+            'publisher' => $data['publisher'],
+            'publishing_year' => $data['publishing_year'],
+            'cover_image_url' => $coverImageUrl,
+            'synopsis' => $data['synopsis'],
+            'status' => $data['status'],
+        ]);
+
+        // Sync multiple genres
+        if (isset($data['genres']) && is_array($data['genres'])) {
+            $novel->genres()->sync($data['genres']);
+        }
+
+        // Load relationships for response
+        $novel->load('genres', 'author');
+
+        return new NovelResource($novel);
+    } catch (\Exception $e) {
+        Log::error('Failed to update novel', ['id' => $id, 'error' => $e->getMessage()]);
+        return response()->json(['error' => $e->getMessage()], 400);
+    }
+}
+
+
+/**
+     * Fetch all genres, ordered by name.
+     */
+    public function getGenres()
+    {
+        try {
+            $genres = Genre::orderBy('name')->get();
+
+            return response()->json([
+                'data' => $genres->map(function ($genre) {
+                    return [
+                        'id' => (int) $genre->id,
+                        'name' => $genre->name,
+                        'slug' => $genre->slug,
+                    ];
+                })->toArray(),
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to fetch genres', ['error' => $e->getMessage()]);
+            return response()->json(['error' => 'Failed to fetch genres: ' . $e->getMessage()], 500);
         }
     }
 

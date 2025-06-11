@@ -24,10 +24,12 @@ Route::post('/register', [UserAuthController::class, 'register']);
     });
 
       Route::prefix('novels')->group(function () {
+        Route::get('/genres', [NovelController::class, 'getGenres'])->name('novels.getGenres'); // Add this
         Route::get('/', [NovelController::class, 'index'])->name('novels.index');
         Route::get('/{id}', [NovelController::class, 'show'])->name('novels.show');
         Route::get('/author/{authorId}', [NovelController::class, 'byAuthor'])->name('novels.byAuthor');
         Route::get('/genre/{genreSlug}', [NovelController::class, 'byGenre'])->name('novels.byGenre');
+        
     });
 
       Route::prefix('featured-novels')->group(function () {
@@ -53,6 +55,7 @@ Route::middleware('auth:sanctum')->group(function () {
         });
         Route::prefix('novels')->group(function () {
             Route::post('/', [NovelController::class, 'store'])->name('novels.store');
+            Route::post('/{id}', [NovelController::class, 'update'])->name('novels.update'); // Add this
             Route::delete('/{id}', [NovelController::class, 'destroy'])->name('novels.destroy');
         });
         Route::prefix('featured-novels')->group(function () {

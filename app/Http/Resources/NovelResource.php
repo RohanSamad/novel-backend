@@ -21,6 +21,7 @@ class NovelResource extends JsonResource
             'synopsis' => $this->synopsis,
             'status' => $this->status,
             'publishing_year' => $this->publishing_year,
+         //   'genre' => $this->whenLoaded('genres', fn () => $this->genres->first() ? $this->genres->first()->name : null),
             'genres' => $this->whenLoaded('genres', fn () => $this->genres->map(function ($genre) {
                 return [
                     'id' => (int) $genre->id,
