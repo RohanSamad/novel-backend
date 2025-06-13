@@ -20,9 +20,7 @@ class NovelResource extends JsonResource
             'cover_image_url' => $this->cover_image_url ? asset($this->cover_image_url) : null,
             'synopsis' => $this->synopsis,
             'status' => $this->status,
-            'publishing_year' => $this->publishing_year,
-         //   'genre' => $this->whenLoaded('genres', fn () => $this->genres->first() ? $this->genres->first()->name : null),
-            'genres' => $this->whenLoaded('genres', fn () => $this->genres->map(function ($genre) {
+            'publishing_year' => $this->publishing_year, 'genres' => $this->whenLoaded('genres', fn () => $this->genres->map(function ($genre) {
                 return [
                     'id' => (int) $genre->id,
                     'name' => $genre->name,

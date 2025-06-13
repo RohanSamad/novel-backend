@@ -2,6 +2,7 @@
 
 <?php
 
+use App\Http\Controllers\API\NovelRatingController;
 use App\Http\Controllers\API\UserAuthController;
 use App\Http\Controllers\API\AuthorController;
 use App\Http\Controllers\API\ChapterController;
@@ -24,20 +25,24 @@ Route::post('/register', [UserAuthController::class, 'register']);
     });
 
       Route::prefix('novels')->group(function () {
-        Route::get('/genres', [NovelController::class, 'getGenres'])->name('novels.getGenres'); // Add this
+        Route::get('/stats/{id}', [NovelController::class, 'getNovelStatsById'])->name('novels.stats');
+        Route::get('/search', [NovelController::class, 'search']);
+        Route::get('/genres', [NovelController::class, 'getGenres'])->name('novels.getGenres'); 
         Route::get('/', [NovelController::class, 'index'])->name('novels.index');
         Route::get('/{id}', [NovelController::class, 'show'])->name('novels.show');
         Route::get('/author/{authorId}', [NovelController::class, 'byAuthor'])->name('novels.byAuthor');
         Route::get('/genre/{genreSlug}', [NovelController::class, 'byGenre'])->name('novels.byGenre');
-        
     });
+
+    // Rating routes
+    
 
       Route::prefix('featured-novels')->group(function () {
         Route::get('/', [FeaturedNovelController::class, 'index'])->name('featured-novels.index');
     });
 
 Route::middleware('auth:sanctum')->group(function () {
-    Route::get('/novels/search', [NovelController::class, 'search']);
+    Route::post('/novel-ratings', [NovelRatingController::class, 'store'])->name('novel-ratings.store');
     Route::get('/check-session', [UserAuthController::class, 'checkSession']);
     Route::post('/logout', [UserAuthController::class, 'logout']);
     Route::post('/verify-admin', [UserAuthController::class, 'verifyAdmin']); 

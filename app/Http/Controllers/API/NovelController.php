@@ -16,7 +16,6 @@ use App\Models\NovelStats;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Facades\Validator;
 
 class NovelController extends Controller
 {
@@ -239,6 +238,39 @@ class NovelController extends Controller
     }
 
     /**
+     * Fetch novel statistics by ID.
+     *
+     * @param  int  $id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function getNovelStatsById($id)
+    {
+        try {
+            if (!is_numeric($id) || $id <= 0) {
+                return response()->json(['error' => 'Invalid novel ID'], 422);
+            }
+
+            $stats = $this->getNovelStats($id);
+
+            return response()->json([
+                'data' => [
+                    'average_rating' => (float)$stats->average_rating,
+                    'rating_count' => (int)$stats->rating_count,
+                ],
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to fetch novel stats', ['id' => $id, 'error' => $e->getMessage()]);
+            return response()->json(['error' => 'Failed to fetch novel stats: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Helper method to fetch or calculate novel stats.
+     *
+     * @param  int  $novelId
+     * @return \App\Models\NovelStats
+     */
+    /**
      * Helper method to fetch or calculate novel stats.
      *
      * @param  int  $novelId
@@ -300,31 +332,6 @@ class NovelController extends Controller
      * @param  int  $id
      * @return \Illuminate\Http\JsonResponse
      */
-   /* public function destroy($id)
-    {
-        if (!is_numeric($id) || $id <= 0) {
-            return response()->json(['error' => 'Invalid novel ID'], 422);
-        }
-
-        $novel = Novel::find($id);
-        if (!$novel) {
-            return response()->json(['error' => 'Novel not found'], 404);
-        }
-
-        try {
-            // Delete cover image if it exists
-            if ($novel->cover_image_url) {
-                $fileName = basename($novel->cover_image_url);
-                Storage::disk('public')->delete('novel-covers/' . $fileName);
-            }
-
-            $novel->delete();
-            return response()->json(['message' => 'Novel deleted successfully', 'id' => (int) $id]);
-        } catch (\Exception $e) {
-            Log::error('Failed to delete novel', ['id' => $id, 'error' => $e->getMessage()]);
-            return response()->json(['error' => 'Failed to delete novel: ' . $e->getMessage()], 500);
-        }
-    }*/
 
     public function destroy($id)
     {
