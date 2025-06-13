@@ -5,6 +5,9 @@ namespace App\Http\Controllers\API;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\NovelRatingResource;
 use App\Models\NovelRating;
+use App\Models\NovelStats;
+use App\Models\Novel;
+use App\Models\Chapter;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -44,6 +47,9 @@ class NovelRatingController extends Controller
                 ]
             );
 
+            // Update novel stats after rating change
+            $this->updateNovelStats($data['novel_id']);
+
             // Return the updated rating
             return response()->json([
                 'data' => new NovelRatingResource($rating),
@@ -54,6 +60,47 @@ class NovelRatingController extends Controller
                 'data' => $request->all(),
             ]);
             return response()->json(['error' => $e->getMessage()], 400);
+        }
+    }
+
+    /**
+     * Update the novel stats based on current ratings.
+     *
+     * @param  int  $novelId
+     * @return void
+     */
+    private function updateNovelStats($novelId)
+    {
+        try {
+            $ratings = NovelRating::where('novel_id', $novelId)->get();
+            $ratingCount = $ratings->count();
+            $averageRating = $ratingCount > 0 ? $ratings->avg('rating') : 0;
+            $chapterCount = Chapter::where('novel_id', $novelId)->count();
+
+            // Ensure the novel exists
+            $novel = Novel::find($novelId);
+            if (!$novel) {
+                throw new \Exception('Novel not found');
+            }
+
+            // Update or create the novel stats record
+            NovelStats::updateOrCreate(
+                ['id' => $novelId],
+                [
+                    'title' => $novel->title,
+                    'chapter_count' => $chapterCount,
+                    'reader_count' => 0, // Update this if you track readers
+                    'average_rating' => $averageRating,
+                    'rating_count' => $ratingCount,
+                    'total_views' => 0, // Update this if you track views
+                    'last_updated' => now(),
+                ]
+            );
+        } catch (\Exception $e) {
+            Log::error('Failed to update novel stats', [
+                'novel_id' => $novelId,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 }

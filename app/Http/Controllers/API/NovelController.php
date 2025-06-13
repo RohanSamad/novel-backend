@@ -238,68 +238,75 @@ class NovelController extends Controller
     }
 
     /**
-     * Fetch novel statistics by ID.
-     *
-     * @param  int  $id
-     * @return \Illuminate\Http\JsonResponse
-     */
-    public function getNovelStatsById($id)
-    {
-        try {
-            if (!is_numeric($id) || $id <= 0) {
-                return response()->json(['error' => 'Invalid novel ID'], 422);
-            }
-
-            $stats = $this->getNovelStats($id);
-
-            return response()->json([
-                'data' => [
-                    'average_rating' => (float)$stats->average_rating,
-                    'rating_count' => (int)$stats->rating_count,
-                ],
-            ]);
-        } catch (\Exception $e) {
-            Log::error('Failed to fetch novel stats', ['id' => $id, 'error' => $e->getMessage()]);
-            return response()->json(['error' => 'Failed to fetch novel stats: ' . $e->getMessage()], 500);
-        }
-    }
-
-    /**
-     * Helper method to fetch or calculate novel stats.
-     *
-     * @param  int  $novelId
-     * @return \App\Models\NovelStats
-     */
-    /**
-     * Helper method to fetch or calculate novel stats.
-     *
-     * @param  int  $novelId
-     * @return \App\Models\NovelStats
-     */
-    private function getNovelStats($novelId)
-    {
-        $stats = NovelStats::where('id', $novelId)->first();
-
-        if (!$stats) {
-            // Calculate stats if not found in novel_stats
-            $ratings = NovelRating::where('novel_id', $novelId)->get();
-            $ratingCount = $ratings->count();
-            $averageRating = $ratingCount > 0 ? $ratings->avg('rating') : 0;
-            $chapterCount = Chapter::where('novel_id', $novelId)->count();
-
-            $stats = NovelStats::create([
-                'id' => $novelId,
-                'title' => Novel::find($novelId)->title,
-                'chapter_count' => $chapterCount,
-                'reader_count' => 0,
-                'average_rating' => $averageRating,
-                'rating_count' => $ratingCount,
-                'total_views' => 0,
-            ]);
+ * Fetch novel statistics by ID.
+ *
+ * @param  int  $id
+ * @return \Illuminate\Http\JsonResponse
+ */
+public function getNovelStatsById($id)
+{
+    try {
+        if (!is_numeric($id) || $id <= 0) {
+            return response()->json(['error' => 'Invalid novel ID'], 422);
         }
 
-        return $stats;
+        // Check if the novel exists
+        $novel = Novel::find($id);
+        if (!$novel) {
+            return response()->json(['error' => 'Novel not found'], 404);
+        }
+
+        $stats = $this->getNovelStats($id);
+
+        return response()->json([
+            'data' => [
+                'average_rating' => (float)$stats->average_rating,
+                'rating_count' => (int)$stats->rating_count,
+            ],
+        ]);
+    } catch (\Exception $e) {
+        Log::error('Failed to fetch novel stats', ['id' => $id, 'error' => $e->getMessage()]);
+        return response()->json(['error' => 'Failed to fetch novel stats: ' . $e->getMessage()], 500);
     }
+}
+
+/**
+ * Helper method to fetch or calculate novel stats.
+ *
+ * @param  int  $novelId
+ * @return \App\Models\NovelStats
+ * @throws \Exception
+ */
+private function getNovelStats($novelId)
+{
+    $stats = NovelStats::where('id', $novelId)->first();
+
+    if (!$stats) {
+        // Check if the novel exists
+        $novel = Novel::find($novelId);
+        if (!$novel) {
+            throw new \Exception('Novel not found');
+        }
+
+        $ratings = NovelRating::where('novel_id', $novelId)->get();
+        $ratingCount = $ratings->count();
+        $averageRating = $ratingCount > 0 ? $ratings->avg('rating') : 0;
+       
+        $chapterCount = Chapter::where('novel_id', $novelId)->count();
+
+        $stats = NovelStats::create([
+            'id' => $novelId,
+            'title' => $novel->title,
+            'chapter_count' => $chapterCount,
+            'reader_count' => 0,
+            'average_rating' => $averageRating,
+            'rating_count' => $ratingCount,
+            'total_views' => 0,
+        ]);
+    }
+
+    return $stats;
+}
 
     /**
      * Fetch novels by author ID with genres.
