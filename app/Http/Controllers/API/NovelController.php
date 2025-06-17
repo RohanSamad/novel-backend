@@ -237,10 +237,16 @@ class NovelController extends Controller
         }
     }
 
-    /**
- * Fetch novel statistics by ID.
- *
- * @param  int  $id
+  /**
+ * Fetch novel statistics by ID (simplified response)
+ * 
+ * @param int $id Novel ID
+ * @return \Illuminate\Http\JsonResponse
+ */
+/**
+ * Fetch novel statistics by ID (returns 0,0 if no stats exist)
+ * 
+ * @param int $id Novel ID
  * @return \Illuminate\Http\JsonResponse
  */
 public function getNovelStatsById($id)
@@ -250,13 +256,24 @@ public function getNovelStatsById($id)
             return response()->json(['error' => 'Invalid novel ID'], 422);
         }
 
-        // Check if the novel exists
+        // Check if novel exists
         $novel = Novel::find($id);
         if (!$novel) {
             return response()->json(['error' => 'Novel not found'], 404);
         }
 
-        $stats = $this->getNovelStats($id);
+        // Try to get existing stats
+        $stats = NovelStats::where('novel_id', $id)->first();
+
+        // Return default values if no stats exist
+        if (!$stats) {
+            return response()->json([
+                'data' => [
+                    'average_rating' => 0.0,
+                    'rating_count' => 0,
+                ],
+            ]);
+        }
 
         return response()->json([
             'data' => [
@@ -264,9 +281,21 @@ public function getNovelStatsById($id)
                 'rating_count' => (int)$stats->rating_count,
             ],
         ]);
+
     } catch (\Exception $e) {
-        Log::error('Failed to fetch novel stats', ['id' => $id, 'error' => $e->getMessage()]);
-        return response()->json(['error' => 'Failed to fetch novel stats: ' . $e->getMessage()], 500);
+        Log::error('Failed to fetch novel stats', [
+            'id' => $id, 
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+        
+        // Even on error, return default values
+        return response()->json([
+            'data' => [
+                'average_rating' => 0.0,
+                'rating_count' => 0,
+            ],
+        ]);
     }
 }
 
@@ -279,33 +308,35 @@ public function getNovelStatsById($id)
  */
 private function getNovelStats($novelId)
 {
-    $stats = NovelStats::where('id', $novelId)->first();
+    $stats = NovelStats::where('novel_id', $novelId)->first();
+    
+    return $stats ?: $this->createDefaultStats($novelId);
+}
 
-    if (!$stats) {
-        // Check if the novel exists
-        $novel = Novel::find($novelId);
-        if (!$novel) {
-            throw new \Exception('Novel not found');
-        }
+private function createDefaultStats($novelId)
+{
+    // Get novel for title if exists
+    $novel = Novel::find($novelId);
+    $title = $novel ? $novel->title : '';
 
-        $ratings = NovelRating::where('novel_id', $novelId)->get();
-        $ratingCount = $ratings->count();
-        $averageRating = $ratingCount > 0 ? $ratings->avg('rating') : 0;
-       
-        $chapterCount = Chapter::where('novel_id', $novelId)->count();
+    // Calculate actual ratings if they exist
+    $ratings = NovelRating::where('novel_id', $novelId)->get();
+    $ratingCount = $ratings->count();
+    $averageRating = $ratingCount > 0 ? $ratings->avg('rating') : 0;
+    
+    // Calculate actual chapter count
+    $chapterCount = Chapter::where('novel_id', $novelId)->count();
 
-        $stats = NovelStats::create([
-            'id' => $novelId,
-            'title' => $novel->title,
-            'chapter_count' => $chapterCount,
-            'reader_count' => 0,
-            'average_rating' => $averageRating,
-            'rating_count' => $ratingCount,
-            'total_views' => 0,
-        ]);
-    }
-
-    return $stats;
+    return new NovelStats([
+        'novel_id' => $novelId,
+        'title' => $title,
+        'chapter_count' => $chapterCount,
+        'reader_count' => 0,
+        'average_rating' => $averageRating,
+        'rating_count' => $ratingCount,
+        'total_views' => 0,
+        'last_updated' => now(),
+    ]);
 }
 
     /**

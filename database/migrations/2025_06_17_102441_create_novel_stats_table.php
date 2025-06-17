@@ -12,7 +12,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('novel_stats', function (Blueprint $table) {
-            $table->id();
+            $table->unsignedBigInteger('novel_id')->primary();
             $table->string('title');
             $table->integer('chapter_count')->default(0);
             $table->integer('reader_count')->default(0);
@@ -20,7 +20,8 @@ return new class extends Migration
             $table->integer('rating_count')->default(0);
             $table->integer('total_views')->default(0);
             $table->timestamp('last_updated')->nullable();
-            $table->foreign('id')->references('id')->on('novels')->onDelete('cascade');
+
+            $table->foreign('novel_id')->references('id')->on('novels')->onDelete('cascade');
         });
     }
 
@@ -32,3 +33,4 @@ return new class extends Migration
         Schema::dropIfExists('novel_stats');
     }
 };
+
