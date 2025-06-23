@@ -18,8 +18,11 @@ Route::post('/register', [UserAuthController::class, 'register']);
         Route::get('/{id}', [AuthorController::class, 'show'])->name('authors.show');
     });
 
+
     Route::prefix('chapters')->group(function () {
         Route::get('/novel/{novelId}', [ChapterController::class, 'index'])->name('chapters.index');
+        //   Route::get('/novel/{novelIdentifier}/{chapterIdentifier}', [ChapterController::class, 'show'])
+        // ->where([ 'novelIdentifier' => '.*', 'chapterIdentifier' => '.*'])->name('chapters.show');
         Route::get('/novel/{novelId}/{chapterId}', [ChapterController::class, 'show'])->name('chapters.show');
         Route::get('/recent', [ChapterController::class, 'recent'])->name('chapters.recent');
     });
@@ -29,11 +32,12 @@ Route::post('/register', [UserAuthController::class, 'register']);
         Route::get('/search', [NovelController::class, 'search']);
         Route::get('/genres', [NovelController::class, 'getGenres'])->name('novels.getGenres'); 
         Route::get('/', [NovelController::class, 'index'])->name('novels.index');
-        Route::get('/{id}', [NovelController::class, 'show'])->name('novels.show');
+       // Route::get('/{identifier}', [NovelController::class, 'show'])->name('novels.show');
         Route::get('/author/{authorId}', [NovelController::class, 'byAuthor'])->name('novels.byAuthor');
         Route::get('/genre/{genreSlug}', [NovelController::class, 'byGenre'])->name('novels.byGenre');
     });
 
+    Route::get('/novels/{id}', [NovelController::class, 'show'])->name('novels.show');
     // Rating routes
     
 

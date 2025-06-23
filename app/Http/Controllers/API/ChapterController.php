@@ -8,7 +8,9 @@ use App\Http\Requests\UpdateChapterRequest;
 use App\Http\Resources\ChapterResource;
 use App\Http\Resources\ChapterCollection;
 use App\Models\Chapter;
+use App\Models\Novel;
 use Illuminate\Support\Facades\Log;
+  use Illuminate\Support\Str;
 use Storage;
 
 class ChapterController extends Controller
@@ -37,34 +39,64 @@ class ChapterController extends Controller
         }
     }
 
-    /**
-     * Fetch a single chapter by ID and novel ID.
-     *
-     * @param  int  $novelId
-     * @param  int  $chapterId
-     * @return \App\Http\Resources\ChapterResource
-     */
-    public function show($novelId, $chapterId)
-    {
-        try {
-            if (!is_numeric($novelId) || $novelId <= 0 || !is_numeric($chapterId) || $chapterId <= 0) {
-                return response()->json(['error' => 'Invalid novel or chapter ID'], 422);
-            }
+    
 
-            $chapter = Chapter::where('novel_id', $novelId)
-                ->where('id', $chapterId)
+  
+
+/**
+ * Fetch a single chapter by novel identifier and chapter identifier
+ * 
+ * @param string|int $novelIdentifier (ID or title)
+ * @param string|int $chapterIdentifier (ID or chapter_number)
+ * @return \App\Http\Resources\ChapterResource|\Illuminate\Http\JsonResponse
+ */
+
+public function show($novelId, $chapterId)
+{
+    try {
+        // Validate inputs
+        if (empty($novelId) || empty($chapterId)) {
+            return response()->json(['error' => 'Novel and chapter identifiers are required'], 422);
+        }
+
+        // Find novel - tries ID first, then title
+        $novel = Novel::when(is_numeric($novelId), function($query) use ($novelId) {
+                    return $query->where('id', $novelId);
+                }, function($query) use ($novelId) {
+                    return $query->where('title', urldecode($novelId));
+                })
                 ->first();
 
-            if (!$chapter) {
-                return response()->json(['error' => 'Chapter not found'], 404);
-            }
-
-            return new ChapterResource($chapter);
-        } catch (\Exception $e) {
-            Log::error('Failed to fetch chapter', ['novel_id' => $novelId, 'chapter_id' => $chapterId, 'error' => $e->getMessage()]);
-            return response()->json(['error' => 'Failed to fetch chapter: ' . $e->getMessage()], 500);
+        if (!$novel) {
+            return response()->json(['error' => 'Novel not found'], 404);
         }
+
+        // Find chapter - tries ID first, then number, then title
+        $chapter = Chapter::where('novel_id', $novel->id)
+                ->where(function($query) use ($chapterId) {
+                    $query->where('id', $chapterId)
+                          ->orWhere('chapter_number', $chapterId)
+                          ->when(!is_numeric($chapterId), function($q) use ($chapterId) {
+                              $q->orWhere('title', urldecode($chapterId));
+                          });
+                })
+                ->first();
+
+        if (!$chapter) {
+            return response()->json(['error' => 'Chapter not found'], 404);
+        }
+
+        return new ChapterResource($chapter);
+
+    } catch (\Exception $e) {
+        Log::error('Failed to fetch chapter', [
+            'novelId' => $novelId,
+            'chapterId' => $chapterId,
+            'error' => $e->getMessage()
+        ]);
+        return response()->json(['error' => 'Failed to fetch chapter'], 500);
     }
+}
 
     /**
      * Fetch the 20 most recent chapters with novel titles.

@@ -16,6 +16,7 @@ use App\Models\NovelStats;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class NovelController extends Controller
 {
@@ -96,6 +97,7 @@ class NovelController extends Controller
         }
     }
 
+    
    /**
      * Fetch a single novel by ID with genres, author, and stats.
      *
@@ -108,7 +110,7 @@ class NovelController extends Controller
      * @param  int  $id
      * @return \Illuminate\Http\JsonResponse
      */
-    public function show($id)
+   /* public function show($id)
     {
         try {
             if (!is_numeric($id) || $id <= 0) {
@@ -133,9 +135,50 @@ class NovelController extends Controller
             Log::error('Failed to fetch novel', ['id' => $id, 'error' => $e->getMessage()]);
             return response()->json(['error' => 'Failed to fetch novel: ' . $e->getMessage()], 500);
         }
+    }*/
+
+    /**
+ * Fetch a single novel by ID or title with genres, author, and stats.
+ *
+ * @param  string|int  $id (can be ID or title)
+ * @return \Illuminate\Http\JsonResponse
+ */
+
+
+public function show($id)
+{
+    try {
+        // Determine if the identifier is numeric (ID) or string (title)
+        if (is_numeric($id) && $id > 0) {
+            // Fetch by ID
+            $novel = Novel::with('genres', 'author', 'chapters', 'ratings', 'featured')
+                        ->find($id);
+        } else {
+            // Clean the input by removing quotes if present
+            $cleanIdentifier = trim($id, '"\'');
+            
+            // Fetch by title only (since slug column doesn't exist)
+            $novel = Novel::with('genres', 'author', 'chapters', 'ratings', 'featured')
+                        ->where('title', $cleanIdentifier)
+                        ->first();
+        }
+
+        if (!$novel) {
+            return response()->json(['error' => 'Novel not found'], 404);
+        }
+
+        // Fetch or calculate stats
+        $stats = $this->getNovelStats($novel->id);
+
+        return response()->json([
+            'data' => new NovelResource($novel),
+            'stats' => new NovelStatsResource($stats),
+        ]);
+    } catch (\Exception $e) {
+        Log::error('Failed to fetch novel', ['identifier' => $id, 'error' => $e->getMessage()]);
+        return response()->json(['error' => 'Failed to fetch novel'], 500);
     }
-
-
+}
     /**
      * Update an existing novel.
      */
