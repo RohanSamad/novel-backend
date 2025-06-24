@@ -15,29 +15,56 @@ use Storage;
 
 class ChapterController extends Controller
 {
+   
+
     /**
-     * Fetch all chapters for a novel, ordered by order_index.
-     *
-     * @param  int  $novelId
-     * @return \App\Http\Resources\ChapterCollection
-     */
-    public function index($novelId)
-    {
-        try {
-            if (!is_numeric($novelId) || $novelId <= 0) {
-                return response()->json(['error' => 'Invalid novel ID'], 422);
-            }
-
-            $chapters = Chapter::where('novel_id', $novelId)
-                ->orderBy('order_index', 'asc')
-                ->get();
-
-            return new ChapterCollection($chapters);
-        } catch (\Exception $e) {
-            Log::error('Failed to fetch chapters', ['novel_id' => $novelId, 'error' => $e->getMessage()]);
-            return response()->json(['error' => 'Failed to fetch chapters: ' . $e->getMessage()], 500);
+ * Fetch all chapters for a novel (by ID or title), ordered by order_index.
+ *
+ * @param  string|int  $novelIdentifier
+ * @return \App\Http\Resources\ChapterCollection|\Illuminate\Http\JsonResponse
+ */
+public function index($novelId)
+{
+    try {
+        // Validate identifier
+        if (empty($novelId)) {
+            return response()->json(['error' => 'Novel identifier is required'], 422);
         }
+
+        // Find the novel by ID or title
+        $novel = is_numeric($novelId) 
+            ? Novel::find($novelId)
+            : Novel::where('title', urldecode($novelId))->first();
+
+        if (!$novel) {
+            return response()->json([
+                'error' => 'Novel not found',
+                'searched' => $novelId,
+                'suggestion' => is_numeric($novelId) 
+                    ? 'Check the novel ID' 
+                    : 'Verify the title spelling and try exact match'
+            ], 404);
+        }
+
+        // Get ordered chapters
+        $chapters = Chapter::where('novel_id', $novel->id)
+            ->orderBy('order_index', 'asc')
+            ->get();
+
+        return new ChapterCollection($chapters);
+
+    } catch (\Exception $e) {
+        Log::error('Failed to fetch chapters', [
+            'novel_identifier' => $novelId,
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+        return response()->json([
+            'error' => 'Failed to fetch chapters',
+            'details' => env('APP_DEBUG') ? $e->getMessage() : null
+        ], 500);
     }
+}
 
     
 
@@ -51,6 +78,84 @@ class ChapterController extends Controller
  * @return \App\Http\Resources\ChapterResource|\Illuminate\Http\JsonResponse
  */
 
+ /*public function show($novelIdentifier, $chapterIdentifier)
+  {
+    try {
+        // Validate identifiers
+        if (empty($novelIdentifier) || empty($chapterIdentifier)) {
+            return response()->json(['error' => 'Novel and chapter identifiers are required'], 422);
+        }
+
+        // First find the novel - handle URL-encoded titles
+        if (is_numeric($novelIdentifier) && $novelIdentifier > 0) {
+            $novel = Novel::find($novelIdentifier);
+        } else {
+            $cleanNovelIdentifier = urldecode(trim($novelIdentifier, '"\''));
+            
+            // Search only by title (since slug column doesn't exist)
+            $novel = Novel::where('title', $cleanNovelIdentifier)->first();
+            
+            // For debugging - remove in production
+            if (!$novel) {
+                $allNovels = Novel::pluck('title')->toArray();
+                Log::debug('Novel search failed', [
+                    'searched_title' => $cleanNovelIdentifier,
+                    'available_titles' => $allNovels
+                ]);
+            }
+        }
+
+        if (!$novel) {
+            return response()->json([
+                'error' => 'Novel not found',
+                'searched_title' => $cleanNovelIdentifier ?? $novelIdentifier,
+                'hint' => 'Make sure the title matches exactly, including capitalization'
+            ], 404);
+        }
+
+        // Then find the chapter
+        if (is_numeric($chapterIdentifier) && $chapterIdentifier > 0) {
+            $chapter = Chapter::where('novel_id', $novel->id)
+                            ->where(function($query) use ($chapterIdentifier) {
+                                $query->where('id', $chapterIdentifier)
+                                      ->orWhere('chapter_number', $chapterIdentifier);
+                            })
+                            ->first();
+        } else {
+            $cleanChapterIdentifier = urldecode(trim($chapterIdentifier, '"\''));
+            $chapter = Chapter::where('novel_id', $novel->id)
+                            ->where('title', $cleanChapterIdentifier)
+                            ->first();
+        }
+
+        if (!$chapter) {
+            return response()->json([
+                'error' => 'Chapter not found for this novel',
+                'novel_id' => $novel->id,
+                'novel_title' => $novel->title,
+                'searched_chapter' => is_numeric($chapterIdentifier) 
+                    ? $chapterIdentifier 
+                    : ($cleanChapterIdentifier ?? $chapterIdentifier),
+                'available_chapters' => Chapter::where('novel_id', $novel->id)
+                                            ->pluck('title', 'chapter_number')
+                                            ->toArray()
+            ], 404);
+        }
+
+        return new ChapterResource($chapter);
+    } catch (\Exception $e) {
+        Log::error('Failed to fetch chapter', [
+            'novel_identifier' => $novelIdentifier,
+            'chapter_identifier' => $chapterIdentifier,
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+        return response()->json([
+            'error' => 'Failed to fetch chapter',
+            'details' => env('APP_DEBUG') ? $e->getMessage() : null
+        ], 500);
+    }
+}*/
 public function show($novelId, $chapterId)
 {
     try {

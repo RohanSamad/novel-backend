@@ -97,45 +97,6 @@ class NovelController extends Controller
         }
     }
 
-    
-   /**
-     * Fetch a single novel by ID with genres, author, and stats.
-     *
-     * @param  int  $id
-     * @return \Illuminate\Http\JsonResponse
-     */
-    /**
-     * Fetch a single novel by ID with genres, author, and stats.
-     *
-     * @param  int  $id
-     * @return \Illuminate\Http\JsonResponse
-     */
-   /* public function show($id)
-    {
-        try {
-            if (!is_numeric($id) || $id <= 0) {
-                return response()->json(['error' => 'Invalid novel ID'], 422);
-            }
-
-            $novel = Novel::with('genres', 'author', 'chapters', 'ratings', 'featured')->find($id);
-
-            if (!$novel) {
-                return response()->json(['error' => 'Novel not found'], 404);
-            }
-
-            // Fetch or calculate stats
-            $stats = $this->getNovelStats($id);
-
-            // Prepare response to match Supabase structure
-            return response()->json([
-                'data' => new NovelResource($novel),
-                'stats' => new NovelStatsResource($stats),
-            ]);
-        } catch (\Exception $e) {
-            Log::error('Failed to fetch novel', ['id' => $id, 'error' => $e->getMessage()]);
-            return response()->json(['error' => 'Failed to fetch novel: ' . $e->getMessage()], 500);
-        }
-    }*/
 
     /**
  * Fetch a single novel by ID or title with genres, author, and stats.
@@ -280,33 +241,42 @@ public function show($id)
         }
     }
 
-  /**
- * Fetch novel statistics by ID (simplified response)
- * 
- * @param int $id Novel ID
- * @return \Illuminate\Http\JsonResponse
- */
+ 
+
+
+
+
 /**
- * Fetch novel statistics by ID (returns 0,0 if no stats exist)
+ * Fetch novel statistics by ID or title (returns 0,0 if no stats exist)
  * 
- * @param int $id Novel ID
+ * @param string|int $novelIdentifier Novel ID or title
  * @return \Illuminate\Http\JsonResponse
  */
 public function getNovelStatsById($id)
 {
     try {
-        if (!is_numeric($id) || $id <= 0) {
-            return response()->json(['error' => 'Invalid novel ID'], 422);
+        // Validate identifier
+        if (empty($id)) {
+            return response()->json(['error' => 'Novel identifier is required'], 422);
         }
 
-        // Check if novel exists
-        $novel = Novel::find($id);
+        // Find novel by ID or title
+        $novel = is_numeric($id) 
+            ? Novel::find($id)
+            : Novel::where('title', urldecode($id))->first();
+
         if (!$novel) {
-            return response()->json(['error' => 'Novel not found'], 404);
+            return response()->json([
+                'error' => 'Novel not found',
+                'searched' => $id,
+                'suggestion' => is_numeric($id) 
+                    ? 'Check the novel ID' 
+                    : 'Verify the title spelling and try exact match'
+            ], 404);
         }
 
         // Try to get existing stats
-        $stats = NovelStats::where('novel_id', $id)->first();
+        $stats = NovelStats::where('novel_id', $novel->id)->first();
 
         // Return default values if no stats exist
         if (!$stats) {
@@ -327,7 +297,7 @@ public function getNovelStatsById($id)
 
     } catch (\Exception $e) {
         Log::error('Failed to fetch novel stats', [
-            'id' => $id, 
+            'identifier' => $id, 
             'error' => $e->getMessage(),
             'trace' => $e->getTraceAsString()
         ]);
