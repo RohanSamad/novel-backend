@@ -41,14 +41,18 @@ class NovelController extends Controller
 
             // Handle cover image upload
             $file = $request->file('cover_image');
-            if ($file->getSize() > 2 * 1024 * 1024) {
-                throw new \Exception('Image size must be less than 2MB');
-            }
+            // if ($file->getSize() > 2 * 1024 * 1024) {
+            //     throw new \Exception('Image size must be less than 2MB');
+            // }
             $timestamp = time();
             $fileExt = $file->getClientOriginalExtension();
             $fileName = "{$timestamp}.{$fileExt}";
-            $path = $file->storeAs('', $fileName, 'novel_covers_v2');
-            $coverImageUrl = "novel_covers_v2/{$fileName}";
+            // $path = $file->storeAs('', $fileName, 'novel_covers_v2');
+            // $coverImageUrl = "novel_covers_v2/{$fileName}";
+            //blackblaze
+            $path = $file->storeAs('novel_covers', $fileName, 's3');
+            $coverImageUrl = Storage::disk('s3')->url($path);
+
 
             // Create the novel
             $novel = Novel::create([
@@ -176,13 +180,25 @@ public function show($id)
             $timestamp = time();
             $fileExt = $file->getClientOriginalExtension();
             $fileName = "{$timestamp}.{$fileExt}";
-            $coverImageUrl = $file->storeAs('', $fileName, 'novel_covers_v2');
-            $coverImageUrl = "novel_covers_v2/{$fileName}";
+            // $coverImageUrl = $file->storeAs('', $fileName, 'novel_covers_v2');
+            // $coverImageUrl = "novel_covers_v2/{$fileName}";
+//blackblaze
+$path = $file->storeAs('novel_covers', $fileName, 's3');
+$coverImageUrl = Storage::disk('s3')->url($path);
+
+
+
+
+
+
 
             // Delete old image if it exists
             if ($novel->cover_image_url) {
                 $oldFileName = basename($novel->cover_image_url);
-                Storage::disk('novel_covers_v2')->delete($oldFileName);
+                // Storage::disk('novel_covers_v2')->delete($oldFileName);
+                //blaclblaze
+                Storage::disk('s3')->delete("novel_covers/{$oldFileName}");
+
             }
         }
 
@@ -399,7 +415,10 @@ private function createDefaultStats($novelId)
             // Delete cover image if it exists
             if ($novel->cover_image_url) {
                 $fileName = basename($novel->cover_image_url);
-                Storage::disk('novel_covers_v2')->delete($fileName);
+                // Storage::disk('novel_covers_v2')->delete($fileName);
+                //blaclblaze
+                Storage::disk('s3')->delete("novel_covers/{$fileName}");
+
             }
 
             $novel->delete();

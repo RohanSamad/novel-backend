@@ -1,7 +1,7 @@
 <?php
 
 namespace App\Http\Controllers\API;
-
+use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreChapterRequest;
 use App\Http\Requests\UpdateChapterRequest;
@@ -66,7 +66,6 @@ public function index($novelId)
     }
 }
 
-    
 
   
 
@@ -249,41 +248,79 @@ public function show($novelId, $chapterId)
      * @param  \App\Http\Requests\StoreChapterRequest  $request
      * @return \App\Http\Resources\ChapterResource
      */
-    public function store(StoreChapterRequest $request)
-    {
-        try {
-            $data = $request->validated();
-
-            // Handle audio file upload
-                $audioUrl = null;
-            if ($request->hasFile('audio_file')) {
-                $file = $request->file('audio_file');
-                $timestamp = time();
-                $fileExt = $file->getClientOriginalExtension();
-                $fileName = "{$timestamp}.{$fileExt}";
-                $path = $file->storeAs('', $fileName, 'novel_chapter_audio_bucket');
-                $audioUrl = "novel_chapter_audio_bucket/{$fileName}"; // Store relative path
+  public function store(Request $request)
+{
+    try {
+        // ✅ EXACT same pattern as your working images
+        $audioUrl = '';
+        if ($request->hasFile('audio_file')) {
+            $file = $request->file('audio_file');
+            
+            // ✅ Same size check as images
+            if ($file->getSize() > 10 * 1024 * 1024) { // 10MB limit for audio
+                throw new \Exception('Audio size must be less than 10MB');
             }
-            // Create the chapter
-            $chapter = Chapter::create([
-                'novel_id' => $data['novel_id'],
-                'chapter_number' => $data['chapter_number'],
-                'title' => $data['title'],
-                'audio_url' => $audioUrl??"",
-                'content_text' => $data['content_text'],
-                'order_index' => $data['order_index'],
+            
+            // ✅ EXACT same variables as images
+            $timestamp = time();
+            $fileExt = $file->getClientOriginalExtension();
+            $fileName = "{$timestamp}.{$fileExt}";
+            
+            Log::info('Audio upload attempt', [
+                'fileName' => $fileName,
+                'size' => $file->getSize(),
+                'extension' => $fileExt
             ]);
-
-            return new ChapterResource($chapter);
-        } catch (\Exception $e) {
-            // Roll back audio upload if chapter creation fails
-            if (isset($fileName) && Storage::disk('novel_chapter_audio_bucket')->exists($fileName)) {
-                Storage::disk('novel_chapter_audio_bucket')->delete($fileName);
+            
+            // ✅ Same Backblaze pattern - this will create 'audio_files' folder automatically
+            $path = $file->storeAs('chapter_audios', $fileName, 's3');
+            $path = Storage::disk('s3')->putFileAs(
+    'chapter_audios',
+    $file,
+    $fileName,
+    [
+        'visibility' => 'public',
+        'ContentType' => $file->getMimeType(), // 👈 explicitly set MIME
+    ]
+);  
+            if ($path) {
+                $audioUrl = Storage::disk('s3')->url($path);
+                Log::info('Audio uploaded successfully', [
+                    'path' => $path,
+                    'url' => $audioUrl
+                ]);
+            } else {
+                Log::error('Audio upload failed', [
+                    'path_result' => $path
+                ]);
             }
-            Log::error('Failed to create chapter', ['error' => $e->getMessage()]);
-            return response()->json(['error' => 'Failed to create chapter: ' . $e->getMessage()], 500);
         }
+        
+        // Ensure not null for database
+        $audioUrl = $audioUrl ?: '';
+        
+        // Create chapter
+        $chapter = Chapter::create([
+            'novel_id' => (int) $request->input('novel_id'),
+            'chapter_number' => (int) $request->input('chapter_number'),
+            'title' => $request->input('title'),
+            'audio_url' => $audioUrl,
+            'content_text' => $request->input('content_text'),
+            'order_index' => (int) $request->input('order_index'),
+        ]);
+
+        Log::info('Chapter created successfully', [
+            'id' => $chapter->id,
+            'has_audio' => !empty($audioUrl)
+        ]);
+
+        return new ChapterResource($chapter);
+        
+    } catch (\Exception $e) {
+        Log::error('Chapter creation failed', ['error' => $e->getMessage()]);
+        return response()->json(['error' => 'Failed to create chapter: ' . $e->getMessage()], 500);
     }
+}
 
     /**
      * Update an existing chapter.
@@ -311,15 +348,22 @@ public function show($novelId, $chapterId)
                 // Delete old audio file if it exists
                 if ($chapter->audio_url) {
                     $oldFileName = basename($chapter->audio_url);
-                    Storage::disk('novel_chapter_audio_bucket')->delete($oldFileName);
+                    // Storage::disk('novel_chapter_audio_bucket')->delete($oldFileName);
+                    //blaclblaze
+                    Storage::disk('s3')->delete("chapter_audios/{$oldFileName}");
+
                 }
 
                 $file = $request->file('audio_file');
                 $timestamp = time();
                 $fileExt = $file->getClientOriginalExtension();
                 $fileName = "{$timestamp}.{$fileExt}";
-                $path = $file->storeAs('', $fileName, 'novel_chapter_audio_bucket');
-                $data['audio_url'] = Storage::disk('novel_chapter_audio_bucket')->url($fileName);
+                // $path = $file->storeAs('', $fileName, 'novel_chapter_audio_bucket');
+                // $data['audio_url'] = Storage::disk('novel_chapter_audio_bucket')->url($fileName);
+                //blaclblaze
+                $path = $file->storeAs('chapter_audios', $fileName, 's3');
+                $data['audio_url'] = Storage::disk('s3')->url($path);
+
             }
 
             // Update the chapter
@@ -329,7 +373,10 @@ public function show($novelId, $chapterId)
         } catch (\Exception $e) {
             // Roll back audio upload if update fails
             if (isset($fileName) && Storage::disk('novel_chapter_audio_bucket')->exists($fileName)) {
-                Storage::disk('novel_chapter_audio_bucket')->delete($fileName);
+                // Storage::disk('novel_chapter_audio_bucket')->delete($fileName);
+                //blaclblaze
+                Storage::disk('s3')->delete("chapter_audios/{$fileName}");
+
             }
             Log::error('Failed to update chapter', ['id' => $id, 'error' => $e->getMessage()]);
             return response()->json(['error' => 'Failed to update chapter: ' . $e->getMessage()], 500);
@@ -368,3 +415,6 @@ public function show($novelId, $chapterId)
         }
     }
 } 
+
+
+
