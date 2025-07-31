@@ -50,6 +50,7 @@ class NovelController extends Controller
             // $path = $file->storeAs('', $fileName, 'novel_covers_v2');
             // $coverImageUrl = "novel_covers_v2/{$fileName}";
             //blackblaze
+            // this file change
             $path = $file->storeAs('novel_covers', $fileName, 's3');
             $coverImageUrl = Storage::disk('s3')->url($path);
 

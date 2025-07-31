@@ -248,6 +248,8 @@ public function show($novelId, $chapterId)
      * @param  \App\Http\Requests\StoreChapterRequest  $request
      * @return \App\Http\Resources\ChapterResource
      */
+
+    // this file chnaged
   public function store(Request $request)
 {
     try {
