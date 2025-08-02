@@ -23,15 +23,13 @@ class ChapterController extends Controller
  * @param  string|int  $novelIdentifier
  * @return \App\Http\Resources\ChapterCollection|\Illuminate\Http\JsonResponse
  */
-public function index($novelId)
+public function index(Request $request, $novelId)
 {
     try {
-        // Validate identifier
         if (empty($novelId)) {
             return response()->json(['error' => 'Novel identifier is required'], 422);
         }
 
-        // Find the novel by ID or title
         $novel = is_numeric($novelId) 
             ? Novel::find($novelId)
             : Novel::where('title', urldecode($novelId))->first();
@@ -46,12 +44,30 @@ public function index($novelId)
             ], 404);
         }
 
-        // Get ordered chapters
-        $chapters = Chapter::where('novel_id', $novel->id)
-            ->orderBy('order_index', 'asc')
-            ->get();
+        $page  = $request->query('page');
+        $limit = $request->query('limit', 10);
 
-        return new ChapterCollection($chapters);
+        $query = Chapter::where('novel_id', $novel->id)
+            ->orderBy('order_index', 'asc');
+
+        $totalChapters = $query->count();
+
+        if ($page) {
+            $chapters = $query->paginate($limit, ['*'], 'page', $page);
+        } else {
+            $chapters = $query->get();
+        }
+
+        // Find the latest chapter by created_at
+        $latestChapter = Chapter::where('novel_id', $novel->id)
+            ->orderBy('created_at', 'desc')
+            ->first();
+
+        return response()->json([
+            'totalChapters' => $totalChapters,
+            'latestChapter' => $latestChapter,
+            'data' => new ChapterCollection($chapters),
+        ]);
 
     } catch (\Exception $e) {
         Log::error('Failed to fetch chapters', [
@@ -66,8 +82,6 @@ public function index($novelId)
     }
 }
 
-
-  
 
 /**
  * Fetch a single chapter by novel identifier and chapter identifier
