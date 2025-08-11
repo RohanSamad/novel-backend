@@ -27,62 +27,65 @@ class NovelController extends Controller
      * @param  \App\Http\Requests\StoreNovelRequest  $request
      * @return \App\Http\Resources\NovelResource
      */
-    public function store(StoreNovelRequest $request)
-    {
-        try {
-            $data = $request->validated();
+   public function store(StoreNovelRequest $request)
+{
+    try {
+        $data = $request->validated();
 
-            // Check or create author
-            $author = Author::firstOrCreate(
-                ['name' => $data['author']],
-                ['name' => $data['author']]
-            );
-            $authorId = $author->id;
+        // Check or create author
+        $author = Author::firstOrCreate(
+            ['name' => $data['author']],
+            ['name' => $data['author']]
+        );
+        $authorId = $author->id;
 
-            // Handle cover image upload
-            $file = $request->file('cover_image');
-            // if ($file->getSize() > 2 * 1024 * 1024) {
-            //     throw new \Exception('Image size must be less than 2MB');
-            // }
-            $timestamp = time();
-            $fileExt = $file->getClientOriginalExtension();
-            $fileName = "{$timestamp}.{$fileExt}";
-            // $path = $file->storeAs('', $fileName, 'novel_covers_v2');
-            // $coverImageUrl = "novel_covers_v2/{$fileName}";
-            //blackblaze
-            // this file change
-            $path = $file->storeAs('novel_covers', $fileName, 's3');
-            $coverImageUrl = Storage::disk('s3')->url($path);
+        // Handle cover image upload
+        $file = $request->file('cover_image');
 
+        $timestamp = time();
+        $fileExt = $file->getClientOriginalExtension();
+        $fileName = "{$timestamp}.{$fileExt}";
 
-            // Create the novel
-            $novel = Novel::create([
-                'title' => $data['title'],
-                'author' => $data['author'],
-                'author_id' => $authorId,
-                'publisher' => $data['publisher'],
-                'cover_image_url' => $coverImageUrl,
-                'synopsis' => $data['synopsis'],
-                'status' => $data['status'],
-                'publishing_year' => $data['publishing_year'],
-            ]);
+        // Upload to S3 with correct visibility and MIME type
+        $path = Storage::disk('s3')->putFileAs(
+            'novel_covers',
+            $file,
+            $fileName,
+            [
+                'visibility' => 'public',
+                'ContentType' => $file->getMimeType(),
+            ]
+        );
 
-            // Attach genres
-            $novel->genres()->attach($data['genres']);
+        // Get full public URL from S3
+        $coverImageUrl = Storage::disk('s3')->url($path);
 
-            // Load relationships for response
-            $novel->load('genres', 'author');
+        // Create the novel
+        $novel = Novel::create([
+            'title' => $data['title'],
+            'author' => $data['author'],
+            'author_id' => $authorId,
+            'publisher' => $data['publisher'],
+            'cover_image_url' => $coverImageUrl, // ✅ Save full URL
+            'synopsis' => $data['synopsis'],
+            'status' => $data['status'],
+            'publishing_year' => $data['publishing_year'],
+        ]);
 
-            return new NovelResource($novel);
-        } catch (\Exception $e) {
-            // Roll back image upload if novel creation fails
-            if (isset($fileName) && Storage::exists("public/novel-covers/{$fileName}")) {
-                Storage::delete("public/novel-covers/{$fileName}");
-            }
-            Log::error('Failed to create novel', ['error' => $e->getMessage()]);
-            return response()->json(['error' => $e->getMessage()], 400);
-        }
+        // Attach genres
+        $novel->genres()->attach($data['genres']);
+
+        // Load relationships for response
+        $novel->load('genres', 'author');
+
+        return new NovelResource($novel);
+
+    } catch (\Exception $e) {
+        Log::error('Failed to create novel', ['error' => $e->getMessage()]);
+        return response()->json(['error' => $e->getMessage()], 400);
     }
+}
+
     /**
      * Fetch all novels with genres, ordered by created_at.
      *
@@ -148,91 +151,155 @@ public function show($id)
     /**
      * Update an existing novel.
      */
-   public function update(Request $request, $id)
+    // public function update(Request $request, $id)
+    // {
+    //     try {
+    //         if (!is_numeric($id) || $id <= 0) {
+    //             return response()->json(['error' => 'Invalid novel ID'], 422);
+    //         }
+
+    //         $novel = Novel::find($id);
+    //         if (!$novel) {
+    //             return response()->json(['error' => 'Novel not found'], 404);
+    //         }
+
+    //         $data = $request->validate([
+    //             'title' => 'required|string|max:255',
+    //             'author' => 'required|string|max:255',
+    //             'publisher' => 'required|string|max:255',
+    //             'publishing_year' => 'required|integer|min:1800|max:' . (date('Y') + 1),
+    //             'cover_image' => 'nullable|image|max:2048', // For file upload
+    //             // 'cover_image' => 'nullable|image|required|file|mimes:jpeg,jpg,png|max:2048',
+    //             'synopsis' => 'required|string',
+    //             'status' => 'required|in:completed,ongoing,hiatus',
+    //             'genres' => 'nullable|array', // Multiple genres
+    //         ]);
+
+    //         // Handle cover image upload if provided
+    //         $coverImageUrl = $novel->cover_image_url;
+    //         if ($request->hasFile('cover_image')) {
+    //             $file = $request->file('cover_image');
+    //             if ($file->getSize() > 2 * 1024 * 1024) {
+    //                 throw new \Exception('Image size must be less than 2MB');
+    //             }
+    //             $timestamp = time();
+    //             $fileExt = $file->getClientOriginalExtension();
+    //             $fileName = "{$timestamp}.{$fileExt}";
+    //             // $coverImageUrl = $file->storeAs('', $fileName, 'novel_covers_v2');
+    //             // $coverImageUrl = "novel_covers_v2/{$fileName}";
+    // //blackblaze
+    // $path = $file->storeAs('novel_covers', $fileName, 's3');
+    // $coverImageUrl = Storage::disk('s3')->url($path);
+    // // $path = Storage::disk('s3')->putFileAs(
+    // //     'novel_covers',
+    // //     $file,
+    // //     $fileName,
+    // //     [
+    // //         'visibility' => 'public',
+    // //         'ContentType' => $file->getMimeType(), // 👈 explicitly set MIME
+    // //     ]
+    // // );  
+
+
+
+
+
+
+
+
+
+    //             // Delete old image if it exists
+    //             if ($novel->cover_image_url) {
+    //                 $oldFileName = basename($novel->cover_image_url);
+    //                 // Storage::disk('novel_covers_v2')->delete($oldFileName);
+    //                 //blaclblaze
+    //                 Storage::disk('s3')->delete("novel_covers/{$oldFileName}");
+
+    //             }
+    //         }
+
+    //         // Check or create author and update author_id
+    //         $author = Author::firstOrCreate(['name' => $data['author']], ['name' => $data['author']]);
+    //         $authorId = $author->id;
+
+    //         // Update novel
+    //         $novel->update([
+    //             'title' => $data['title'],
+    //             'author' => $data['author'], // Optional: Keep this if you want to store the name
+    //             'author_id' => $authorId,    // Update the relationship
+    //             'publisher' => $data['publisher'],
+    //             'publishing_year' => $data['publishing_year'],
+    //             'cover_image_url' => $coverImageUrl,
+    //             'synopsis' => $data['synopsis'],
+    //             'status' => $data['status'],
+    //         ]);
+
+    //         // Sync multiple genres
+    //         if (isset($data['genres']) && is_array($data['genres'])) {
+    //             $novel->genres()->sync($data['genres']);
+    //         }
+
+    //         // Load relationships for response
+    //         $novel->load('genres', 'author');
+
+    //         return new NovelResource($novel);
+    //     } catch (\Exception $e) {
+    //         Log::error('Failed to update novel', ['id' => $id, 'error' => $e->getMessage()]);
+    //         return response()->json(['error' => $e->getMessage()], 400);
+    //     }
+    // }
+
+
+
+    public function update(Request $request, Novel $novel)
 {
-    try {
-        if (!is_numeric($id) || $id <= 0) {
-            return response()->json(['error' => 'Invalid novel ID'], 422);
-        }
+    // Validate
+    $validated = $request->validate([
+        'title' => 'required|string|max:255',
+        'description' => 'nullable|string',
+        'cover_image' => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
+    ]);
 
-        $novel = Novel::find($id);
-        if (!$novel) {
-            return response()->json(['error' => 'Novel not found'], 404);
-        }
+    // Keep old cover URL
+    $coverImageUrl = $novel->cover_image_url;
 
-        $data = $request->validate([
-            'title' => 'required|string|max:255',
-            'author' => 'required|string|max:255',
-            'publisher' => 'required|string|max:255',
-            'publishing_year' => 'required|integer|min:1800|max:' . (date('Y') + 1),
-            'cover_image' => 'nullable|image|max:2048', // For file upload
-            'synopsis' => 'required|string',
-            'status' => 'required|in:completed,ongoing,hiatus',
-            'genres' => 'nullable|array', // Multiple genres
-        ]);
-
-        // Handle cover image upload if provided
-        $coverImageUrl = $novel->cover_image_url;
-        if ($request->hasFile('cover_image')) {
+    // Handle new upload if present
+    if ($request->hasFile('cover_image')) {
+        try {
             $file = $request->file('cover_image');
-            if ($file->getSize() > 2 * 1024 * 1024) {
-                throw new \Exception('Image size must be less than 2MB');
+            $fileName = time() . '_' . uniqid() . '.' . $file->getClientOriginalExtension();
+
+            if (config('filesystems.default') === 's3') {
+                // S3 / Blackblaze B2 upload
+                $path = $file->storeAs('novel_covers', $fileName, 's3');
+
+                if (!$path) {
+                    \Log::error('S3 upload failed: empty path returned.');
+                } else {
+                    $coverImageUrl = Storage::disk('s3')->url($path);
+                }
+            } else {
+                // Local storage
+                $path = $file->storeAs('novel_covers', $fileName, 'public');
+                $coverImageUrl = asset('storage/' . $path);
             }
-            $timestamp = time();
-            $fileExt = $file->getClientOriginalExtension();
-            $fileName = "{$timestamp}.{$fileExt}";
-            // $coverImageUrl = $file->storeAs('', $fileName, 'novel_covers_v2');
-            // $coverImageUrl = "novel_covers_v2/{$fileName}";
-//blackblaze
-$path = $file->storeAs('novel_covers', $fileName, 's3');
-$coverImageUrl = Storage::disk('s3')->url($path);
-
-
-
-
-
-
-
-            // Delete old image if it exists
-            if ($novel->cover_image_url) {
-                $oldFileName = basename($novel->cover_image_url);
-                // Storage::disk('novel_covers_v2')->delete($oldFileName);
-                //blaclblaze
-                Storage::disk('s3')->delete("novel_covers/{$oldFileName}");
-
-            }
+        } catch (\Exception $e) {
+            \Log::error('Cover image upload failed: ' . $e->getMessage());
+            // Keep old URL if upload fails
         }
-
-        // Check or create author and update author_id
-        $author = Author::firstOrCreate(['name' => $data['author']], ['name' => $data['author']]);
-        $authorId = $author->id;
-
-        // Update novel
-        $novel->update([
-            'title' => $data['title'],
-            'author' => $data['author'], // Optional: Keep this if you want to store the name
-            'author_id' => $authorId,    // Update the relationship
-            'publisher' => $data['publisher'],
-            'publishing_year' => $data['publishing_year'],
-            'cover_image_url' => $coverImageUrl,
-            'synopsis' => $data['synopsis'],
-            'status' => $data['status'],
-        ]);
-
-        // Sync multiple genres
-        if (isset($data['genres']) && is_array($data['genres'])) {
-            $novel->genres()->sync($data['genres']);
-        }
-
-        // Load relationships for response
-        $novel->load('genres', 'author');
-
-        return new NovelResource($novel);
-    } catch (\Exception $e) {
-        Log::error('Failed to update novel', ['id' => $id, 'error' => $e->getMessage()]);
-        return response()->json(['error' => $e->getMessage()], 400);
     }
+
+    // Update novel
+    $novel->update([
+        'title' => $validated['title'],
+        'description' => $validated['description'] ?? $novel->description,
+        'cover_image_url' => $coverImageUrl,
+    ]);
+
+    return redirect()->route('novels.show', $novel->id)
+        ->with('success', 'Novel updated successfully!');
 }
+
 
 
 /**
