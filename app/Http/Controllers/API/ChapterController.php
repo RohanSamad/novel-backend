@@ -349,103 +349,103 @@ class ChapterController extends Controller
      * @param  int  $id
      * @return \App\Http\Resources\ChapterResource
      */
-public function update(UpdateChapterRequest $request, $id)
-{
-    if (!is_numeric($id) || $id <= 0) {
-        return response()->json(['error' => 'Invalid chapter ID'], 422);
-    }
-
-    $chapter = Chapter::find($id);
-    if (!$chapter) {
-        return response()->json(['error' => 'Chapter not found'], 404);
-    }
-
-    try {
-        $data = $request->validated();
-
-        // Handle audio file upload
-        if ($request->hasFile('audio_file')) {
-            $file = $request->file('audio_file');
-
-            if ($file->getSize() > 10 * 1024 * 1024) {
-                throw new \Exception('Audio size must be less than 10MB');
-            }
-
-            // Create S3 client with same configuration as store function
-            $s3Client = new \Aws\S3\S3Client([
-                'version' => 'latest',
-                'region' => env('AWS_DEFAULT_REGION'),
-                'endpoint' => env('AWS_ENDPOINT'),
-                'use_path_style_endpoint' => true,
-                'credentials' => [
-                    'key' => env('AWS_ACCESS_KEY_ID'),
-                    'secret' => env('AWS_SECRET_ACCESS_KEY'),
-                ],
-                'http' => [
-                    'verify' => false  // Disable SSL verification for development
-                ]
-            ]);
-
-            // Delete old audio file if it exists
-            if ($chapter->audio_url) {
-                try {
-                    $oldFileName = basename($chapter->audio_url);
-                    $oldS3Key = "chapter_audios/{$oldFileName}";
-                    
-                    $s3Client->deleteObject([
-                        'Bucket' => env('AWS_BUCKET'),
-                        'Key' => $oldS3Key
-                    ]);
-                } catch (\Exception $deleteError) {
-                    // Log the error but continue with upload
-                    Log::warning('Could not delete old audio file', ['error' => $deleteError->getMessage()]);
-                }
-            }
-
-            // Upload new file using direct AWS SDK
-            try {
-                $timestamp = time();
-                $fileExt = $file->getClientOriginalExtension();
-                $fileName = "{$timestamp}.{$fileExt}";
-                $s3Key = "chapter_audios/{$fileName}";
-
-                // Read file content
-                $fileContent = file_get_contents($file->getRealPath());
-                if ($fileContent === false) {
-                    throw new \Exception('Could not read uploaded file content');
-                }
-
-                // Upload using direct AWS SDK
-                $result = $s3Client->putObject([
-                    'Bucket' => env('AWS_BUCKET'),
-                    'Key' => $s3Key,
-                    'Body' => $fileContent,
-                    'ContentType' => $file->getMimeType(),
-                    'ACL' => 'public-read'
-                ]);
-
-                if ($result) {
-                    // Construct URL
-                    $data['audio_url'] = env('AWS_ENDPOINT') . '/' . env('AWS_BUCKET') . '/' . $s3Key;
-                } else {
-                    throw new \Exception('Direct AWS SDK upload returned empty result');
-                }
-
-            } catch (\Exception $uploadError) {
-                throw new \Exception('Failed to upload new audio file: ' . $uploadError->getMessage());
-            }
+    public function update(UpdateChapterRequest $request, $id)
+    {
+        if (!is_numeric($id) || $id <= 0) {
+            return response()->json(['error' => 'Invalid chapter ID'], 422);
         }
 
-        // Update the chapter
-        $chapter->update($data);
+        $chapter = Chapter::find($id);
+        if (!$chapter) {
+            return response()->json(['error' => 'Chapter not found'], 404);
+        }
 
-        return new ChapterResource($chapter);
-        
-    } catch (\Exception $e) {
-        Log::error('Failed to update chapter', ['id' => $id, 'error' => $e->getMessage()]);
-        return response()->json(['error' => 'Failed to update chapter: ' . $e->getMessage()], 500);
+        try {
+            $data = $request->validated();
+
+            // Handle audio file upload
+            if ($request->hasFile('audio_file')) {
+                $file = $request->file('audio_file');
+
+                if ($file->getSize() > 10 * 1024 * 1024) {
+                    throw new \Exception('Audio size must be less than 10MB');
+                }
+
+                // Create S3 client with same configuration as store function
+                $s3Client = new \Aws\S3\S3Client([
+                    'version' => 'latest',
+                    'region' => env('AWS_DEFAULT_REGION'),
+                    'endpoint' => env('AWS_ENDPOINT'),
+                    'use_path_style_endpoint' => true,
+                    'credentials' => [
+                        'key' => env('AWS_ACCESS_KEY_ID'),
+                        'secret' => env('AWS_SECRET_ACCESS_KEY'),
+                    ],
+                    'http' => [
+                        'verify' => false  // Disable SSL verification for development
+                    ]
+                ]);
+
+                // Delete old audio file if it exists
+                if ($chapter->audio_url) {
+                    try {
+                        $oldFileName = basename($chapter->audio_url);
+                        $oldS3Key = "chapter_audios/{$oldFileName}";
+
+                        $s3Client->deleteObject([
+                            'Bucket' => env('AWS_BUCKET'),
+                            'Key' => $oldS3Key
+                        ]);
+                    } catch (\Exception $deleteError) {
+                        // Log the error but continue with upload
+                        Log::warning('Could not delete old audio file', ['error' => $deleteError->getMessage()]);
+                    }
+                }
+
+                // Upload new file using direct AWS SDK
+                try {
+                    $timestamp = time();
+                    $fileExt = $file->getClientOriginalExtension();
+                    $fileName = "{$timestamp}.{$fileExt}";
+                    $s3Key = "chapter_audios/{$fileName}";
+
+                    // Read file content
+                    $fileContent = file_get_contents($file->getRealPath());
+                    if ($fileContent === false) {
+                        throw new \Exception('Could not read uploaded file content');
+                    }
+
+                    // Upload using direct AWS SDK
+                    $result = $s3Client->putObject([
+                        'Bucket' => env('AWS_BUCKET'),
+                        'Key' => $s3Key,
+                        'Body' => $fileContent,
+                        'ContentType' => $file->getMimeType(),
+                        'ACL' => 'public-read'
+                    ]);
+
+                    if ($result) {
+                        // Construct URL
+                        $data['audio_url'] = env('AWS_ENDPOINT') . '/' . env('AWS_BUCKET') . '/' . $s3Key;
+                    } else {
+                        throw new \Exception('Direct AWS SDK upload returned empty result');
+                    }
+
+                } catch (\Exception $uploadError) {
+                    throw new \Exception('Failed to upload new audio file: ' . $uploadError->getMessage());
+                }
+            }
+
+            // Update the chapter
+            $chapter->update($data);
+
+            return new ChapterResource($chapter);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to update chapter', ['id' => $id, 'error' => $e->getMessage()]);
+            return response()->json(['error' => 'Failed to update chapter: ' . $e->getMessage()], 500);
+        }
     }
-}
 
     /**
      * Delete a chapter.
