@@ -46,6 +46,7 @@ class ChapterController extends Controller
 
             $page = $request->query('page');
             $limit = $request->query('limit', 10);
+            $shortQuery = filter_var($request->query('short_query', false), FILTER_VALIDATE_BOOLEAN);
 
             $query = Chapter::where('novel_id', $novel->id)
                 ->orderBy('order_index', 'asc');
@@ -58,15 +59,14 @@ class ChapterController extends Controller
                 $chapters = $query->get();
             }
 
-            // Find the latest chapter by created_at
             $latestChapter = Chapter::where('novel_id', $novel->id)
                 ->orderBy('created_at', 'desc')
                 ->first();
 
             return response()->json([
                 'totalChapters' => $totalChapters,
-                'latestChapter' => $latestChapter,
-                'data' => new ChapterCollection($chapters),
+                'latestChapter' => $latestChapter ? new \App\Http\Resources\ChapterResource($latestChapter, $shortQuery) : null,
+                'data' => new ChapterCollection($chapters, $shortQuery),
             ]);
 
         } catch (\Exception $e) {
@@ -81,6 +81,7 @@ class ChapterController extends Controller
             ], 500);
         }
     }
+
 
 
     /**

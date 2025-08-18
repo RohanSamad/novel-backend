@@ -21,70 +21,70 @@ use Illuminate\Support\Str;
 class NovelController extends Controller
 {
 
-     /**
+    /**
      * Store a new novel.
      *
      * @param  \App\Http\Requests\StoreNovelRequest  $request
      * @return \App\Http\Resources\NovelResource
      */
-   public function store(StoreNovelRequest $request)
-{
-    try {
-        $data = $request->validated();
+    public function store(StoreNovelRequest $request)
+    {
+        try {
+            $data = $request->validated();
 
-        // Check or create author
-        $author = Author::firstOrCreate(
-            ['name' => $data['author']],
-            ['name' => $data['author']]
-        );
-        $authorId = $author->id;
+            // Check or create author
+            $author = Author::firstOrCreate(
+                ['name' => $data['author']],
+                ['name' => $data['author']]
+            );
+            $authorId = $author->id;
 
-        // Handle cover image upload
-        $file = $request->file('cover_image');
+            // Handle cover image upload
+            $file = $request->file('cover_image');
 
-        $timestamp = time();
-        $fileExt = $file->getClientOriginalExtension();
-        $fileName = "{$timestamp}.{$fileExt}";
+            $timestamp = time();
+            $fileExt = $file->getClientOriginalExtension();
+            $fileName = "{$timestamp}.{$fileExt}";
 
-        // Upload to S3 with correct visibility and MIME type
-        $path = Storage::disk('s3')->putFileAs(
-            'novel_covers',
-            $file,
-            $fileName,
-            [
-                'visibility' => 'public',
-                'ContentType' => $file->getMimeType(),
-            ]
-        );
+            // Upload to S3 with correct visibility and MIME type
+            $path = Storage::disk('s3')->putFileAs(
+                'novel_covers',
+                $file,
+                $fileName,
+                [
+                    'visibility' => 'public',
+                    'ContentType' => $file->getMimeType(),
+                ]
+            );
 
-        // Get full public URL from S3
-        $coverImageUrl = Storage::disk('s3')->url($path);
+            // Get full public URL from S3
+            $coverImageUrl = Storage::disk('s3')->url($path);
 
-        // Create the novel
-        $novel = Novel::create([
-            'title' => $data['title'],
-            'author' => $data['author'],
-            'author_id' => $authorId,
-            'publisher' => $data['publisher'],
-            'cover_image_url' => $coverImageUrl, // ✅ Save full URL
-            'synopsis' => $data['synopsis'],
-            'status' => $data['status'],
-            'publishing_year' => $data['publishing_year'],
-        ]);
+            // Create the novel
+            $novel = Novel::create([
+                'title' => $data['title'],
+                'author' => $data['author'],
+                'author_id' => $authorId,
+                'publisher' => $data['publisher'],
+                'cover_image_url' => $coverImageUrl, // ✅ Save full URL
+                'synopsis' => $data['synopsis'],
+                'status' => $data['status'],
+                'publishing_year' => $data['publishing_year'],
+            ]);
 
-        // Attach genres
-        $novel->genres()->attach($data['genres']);
+            // Attach genres
+            $novel->genres()->attach($data['genres']);
 
-        // Load relationships for response
-        $novel->load('genres', 'author');
+            // Load relationships for response
+            $novel->load('genres', 'author');
 
-        return new NovelResource($novel);
+            return new NovelResource($novel);
 
-    } catch (\Exception $e) {
-        Log::error('Failed to create novel', ['error' => $e->getMessage()]);
-        return response()->json(['error' => $e->getMessage()], 400);
+        } catch (\Exception $e) {
+            Log::error('Failed to create novel', ['error' => $e->getMessage()]);
+            return response()->json(['error' => $e->getMessage()], 400);
+        }
     }
-}
 
     /**
      * Fetch all novels with genres, ordered by created_at.
@@ -107,40 +107,78 @@ class NovelController extends Controller
 
 
     /**
- * Fetch a single novel by ID or title with genres, author, and stats.
- *
- * @param  string|int  $id (can be ID or title)
- * @return \Illuminate\Http\JsonResponse
- */
+     * Fetch a single novel by ID or title with genres, author, and stats.
+     *
+     * @param  string|int  $id (can be ID or title)
+     * @return \Illuminate\Http\JsonResponse
+     */
 
-
-public function show($id)
+public function show($id, Request $request)
 {
     try {
-        // Determine if the identifier is numeric (ID) or string (title)
+        $shortQuery = filter_var($request->query('short_query', false), FILTER_VALIDATE_BOOLEAN);
+        $chapterLimit = (int) $request->query('limit', 0);
+
+        // Optimize chapter selection based on short_query
+        $chapterFields = $shortQuery 
+            ? ['id', 'novel_id', 'chapter_number', 'title', 'order_index', 'created_at', 'updated_at']
+            : ['*'];
+
+        // Build optimized chapters query
+        $chaptersQuery = function($query) use ($chapterLimit, $chapterFields) {
+            $query->select($chapterFields)
+                  ->orderBy('order_index');
+            if ($chapterLimit > 0) {
+                $query->limit($chapterLimit);
+            }
+        };
+
+        // Build main query
         if (is_numeric($id) && $id > 0) {
-            // Fetch by ID
-            $novel = Novel::with('genres', 'author', 'chapters', 'ratings', 'featured')
-                        ->find($id);
+            $novel = Novel::with([
+                'genres:id,name,slug',  // Select only needed fields
+                'author:id,name', 
+                'chapters' => $chaptersQuery,
+                'ratings:id,user_id,rating,created_at,updated_at,novel_id', 
+                'featured:id,position,start_date,end_date,novel_id'
+            ])->find($id);
         } else {
-            // Clean the input by removing quotes if present
             $cleanIdentifier = trim($id, '"\'');
-            
-            // Fetch by title only (since slug column doesn't exist)
-            $novel = Novel::with('genres', 'author', 'chapters', 'ratings', 'featured')
-                        ->where('title', $cleanIdentifier)
-                        ->first();
+            $novel = Novel::with([
+                'genres:id,name,slug',
+                'author:id,name', 
+                'chapters' => $chaptersQuery,
+                'ratings:id,user_id,rating,created_at,updated_at,novel_id', 
+                'featured:id,position,start_date,end_date,novel_id'
+            ])->where('title', $cleanIdentifier)
+              ->first();
         }
 
         if (!$novel) {
             return response()->json(['error' => 'Novel not found'], 404);
         }
 
-        // Fetch or calculate stats
+        // Efficiently get chapter stats
+        $totalChapters = null;
+        $latestChapter = null;
+
+        if ($chapterLimit > 0 && $novel->chapters->count() >= $chapterLimit) {
+            // If we hit the limit, we need separate queries for accurate totals
+            $totalChapters = \App\Models\Chapter::where('novel_id', $novel->id)->count();
+            $latestChapter = \App\Models\Chapter::select($chapterFields)
+                ->where('novel_id', $novel->id)
+                ->orderBy('created_at', 'desc')
+                ->first();
+        } else {
+            // We loaded all chapters, so derive from loaded data
+            $totalChapters = $novel->chapters->count();
+            $latestChapter = $novel->chapters->sortByDesc('created_at')->first();
+        }
+
         $stats = $this->getNovelStats($novel->id);
 
         return response()->json([
-            'data' => new NovelResource($novel),
+            'data'  => new NovelResource($novel, $shortQuery, $totalChapters, $latestChapter),
             'stats' => new NovelStatsResource($stats),
         ]);
     } catch (\Exception $e) {
@@ -148,6 +186,7 @@ public function show($id)
         return response()->json(['error' => 'Failed to fetch novel'], 500);
     }
 }
+
     /**
      * Update an existing novel.
      */
@@ -252,57 +291,57 @@ public function show($id)
 
 
     public function update(Request $request, Novel $novel)
-{
-    // Validate
-    $validated = $request->validate([
-        'title' => 'required|string|max:255',
-        'description' => 'nullable|string',
-        'cover_image' => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
-    ]);
+    {
+        // Validate
+        $validated = $request->validate([
+            'title' => 'required|string|max:255',
+            'description' => 'nullable|string',
+            'cover_image' => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
+        ]);
 
-    // Keep old cover URL
-    $coverImageUrl = $novel->cover_image_url;
+        // Keep old cover URL
+        $coverImageUrl = $novel->cover_image_url;
 
-    // Handle new upload if present
-    if ($request->hasFile('cover_image')) {
-        try {
-            $file = $request->file('cover_image');
-            $fileName = time() . '_' . uniqid() . '.' . $file->getClientOriginalExtension();
+        // Handle new upload if present
+        if ($request->hasFile('cover_image')) {
+            try {
+                $file = $request->file('cover_image');
+                $fileName = time() . '_' . uniqid() . '.' . $file->getClientOriginalExtension();
 
-            if (config('filesystems.default') === 's3') {
-                // S3 / Blackblaze B2 upload
-                $path = $file->storeAs('novel_covers', $fileName, 's3');
+                if (config('filesystems.default') === 's3') {
+                    // S3 / Blackblaze B2 upload
+                    $path = $file->storeAs('novel_covers', $fileName, 's3');
 
-                if (!$path) {
-                    \Log::error('S3 upload failed: empty path returned.');
+                    if (!$path) {
+                        \Log::error('S3 upload failed: empty path returned.');
+                    } else {
+                        $coverImageUrl = Storage::disk('s3')->url($path);
+                    }
                 } else {
-                    $coverImageUrl = Storage::disk('s3')->url($path);
+                    // Local storage
+                    $path = $file->storeAs('novel_covers', $fileName, 'public');
+                    $coverImageUrl = asset('storage/' . $path);
                 }
-            } else {
-                // Local storage
-                $path = $file->storeAs('novel_covers', $fileName, 'public');
-                $coverImageUrl = asset('storage/' . $path);
+            } catch (\Exception $e) {
+                \Log::error('Cover image upload failed: ' . $e->getMessage());
+                // Keep old URL if upload fails
             }
-        } catch (\Exception $e) {
-            \Log::error('Cover image upload failed: ' . $e->getMessage());
-            // Keep old URL if upload fails
         }
+
+        // Update novel
+        $novel->update([
+            'title' => $validated['title'],
+            'description' => $validated['description'] ?? $novel->description,
+            'cover_image_url' => $coverImageUrl,
+        ]);
+
+        return redirect()->route('novels.show', $novel->id)
+            ->with('success', 'Novel updated successfully!');
     }
 
-    // Update novel
-    $novel->update([
-        'title' => $validated['title'],
-        'description' => $validated['description'] ?? $novel->description,
-        'cover_image_url' => $coverImageUrl,
-    ]);
-
-    return redirect()->route('novels.show', $novel->id)
-        ->with('success', 'Novel updated successfully!');
-}
 
 
-
-/**
+    /**
      * Fetch all genres, ordered by name.
      */
     public function getGenres()
@@ -325,45 +364,68 @@ public function show($id)
         }
     }
 
- 
 
 
 
 
-/**
- * Fetch novel statistics by ID or title (returns 0,0 if no stats exist)
- * 
- * @param string|int $novelIdentifier Novel ID or title
- * @return \Illuminate\Http\JsonResponse
- */
-public function getNovelStatsById($id)
-{
-    try {
-        // Validate identifier
-        if (empty($id)) {
-            return response()->json(['error' => 'Novel identifier is required'], 422);
-        }
 
-        // Find novel by ID or title
-        $novel = is_numeric($id) 
-            ? Novel::find($id)
-            : Novel::where('title', urldecode($id))->first();
+    /**
+     * Fetch novel statistics by ID or title (returns 0,0 if no stats exist)
+     * 
+     * @param string|int $novelIdentifier Novel ID or title
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function getNovelStatsById($id)
+    {
+        try {
+            // Validate identifier
+            if (empty($id)) {
+                return response()->json(['error' => 'Novel identifier is required'], 422);
+            }
 
-        if (!$novel) {
+            // Find novel by ID or title
+            $novel = is_numeric($id)
+                ? Novel::find($id)
+                : Novel::where('title', urldecode($id))->first();
+
+            if (!$novel) {
+                return response()->json([
+                    'error' => 'Novel not found',
+                    'searched' => $id,
+                    'suggestion' => is_numeric($id)
+                        ? 'Check the novel ID'
+                        : 'Verify the title spelling and try exact match'
+                ], 404);
+            }
+
+            // Try to get existing stats
+            $stats = NovelStats::where('novel_id', $novel->id)->first();
+
+            // Return default values if no stats exist
+            if (!$stats) {
+                return response()->json([
+                    'data' => [
+                        'average_rating' => 0.0,
+                        'rating_count' => 0,
+                    ],
+                ]);
+            }
+
             return response()->json([
-                'error' => 'Novel not found',
-                'searched' => $id,
-                'suggestion' => is_numeric($id) 
-                    ? 'Check the novel ID' 
-                    : 'Verify the title spelling and try exact match'
-            ], 404);
-        }
+                'data' => [
+                    'average_rating' => (float) $stats->average_rating,
+                    'rating_count' => (int) $stats->rating_count,
+                ],
+            ]);
 
-        // Try to get existing stats
-        $stats = NovelStats::where('novel_id', $novel->id)->first();
+        } catch (\Exception $e) {
+            Log::error('Failed to fetch novel stats', [
+                'identifier' => $id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
 
-        // Return default values if no stats exist
-        if (!$stats) {
+            // Even on error, return default values
             return response()->json([
                 'data' => [
                     'average_rating' => 0.0,
@@ -371,70 +433,47 @@ public function getNovelStatsById($id)
                 ],
             ]);
         }
+    }
 
-        return response()->json([
-            'data' => [
-                'average_rating' => (float)$stats->average_rating,
-                'rating_count' => (int)$stats->rating_count,
-            ],
-        ]);
+    /**
+     * Helper method to fetch or calculate novel stats.
+     *
+     * @param  int  $novelId
+     * @return \App\Models\NovelStats
+     * @throws \Exception
+     */
+    private function getNovelStats($novelId)
+    {
+        $stats = NovelStats::where('novel_id', $novelId)->first();
 
-    } catch (\Exception $e) {
-        Log::error('Failed to fetch novel stats', [
-            'identifier' => $id, 
-            'error' => $e->getMessage(),
-            'trace' => $e->getTraceAsString()
-        ]);
-        
-        // Even on error, return default values
-        return response()->json([
-            'data' => [
-                'average_rating' => 0.0,
-                'rating_count' => 0,
-            ],
+        return $stats ?: $this->createDefaultStats($novelId);
+    }
+
+    private function createDefaultStats($novelId)
+    {
+        // Get novel for title if exists
+        $novel = Novel::find($novelId);
+        $title = $novel ? $novel->title : '';
+
+        // Calculate actual ratings if they exist
+        $ratings = NovelRating::where('novel_id', $novelId)->get();
+        $ratingCount = $ratings->count();
+        $averageRating = $ratingCount > 0 ? $ratings->avg('rating') : 0;
+
+        // Calculate actual chapter count
+        $chapterCount = Chapter::where('novel_id', $novelId)->count();
+
+        return new NovelStats([
+            'novel_id' => $novelId,
+            'title' => $title,
+            'chapter_count' => $chapterCount,
+            'reader_count' => 0,
+            'average_rating' => $averageRating,
+            'rating_count' => $ratingCount,
+            'total_views' => 0,
+            'last_updated' => now(),
         ]);
     }
-}
-
-/**
- * Helper method to fetch or calculate novel stats.
- *
- * @param  int  $novelId
- * @return \App\Models\NovelStats
- * @throws \Exception
- */
-private function getNovelStats($novelId)
-{
-    $stats = NovelStats::where('novel_id', $novelId)->first();
-    
-    return $stats ?: $this->createDefaultStats($novelId);
-}
-
-private function createDefaultStats($novelId)
-{
-    // Get novel for title if exists
-    $novel = Novel::find($novelId);
-    $title = $novel ? $novel->title : '';
-
-    // Calculate actual ratings if they exist
-    $ratings = NovelRating::where('novel_id', $novelId)->get();
-    $ratingCount = $ratings->count();
-    $averageRating = $ratingCount > 0 ? $ratings->avg('rating') : 0;
-    
-    // Calculate actual chapter count
-    $chapterCount = Chapter::where('novel_id', $novelId)->count();
-
-    return new NovelStats([
-        'novel_id' => $novelId,
-        'title' => $title,
-        'chapter_count' => $chapterCount,
-        'reader_count' => 0,
-        'average_rating' => $averageRating,
-        'rating_count' => $ratingCount,
-        'total_views' => 0,
-        'last_updated' => now(),
-    ]);
-}
 
     /**
      * Fetch novels by author ID with genres.
@@ -503,31 +542,31 @@ private function createDefaultStats($novelId)
      * @param  \Illuminate\Http\Request  $request
      * @return \App\Http\Resources\NovelCollection
      */
-  public function search(Request $request)
-{
-    $query = $request->query('q');
-    if (!$query) {
-        // Return all novels if no query
+    public function search(Request $request)
+    {
+        $query = $request->query('q');
+        if (!$query) {
+            // Return all novels if no query
+            $novels = Novel::with('genres', 'author')
+                ->orderBy('created_at', 'desc')
+                ->get();
+            return new NovelCollection($novels);
+        }
+
+        $searchTerms = explode(' ', strtolower($query));
         $novels = Novel::with('genres', 'author')
+            ->where(function ($q) use ($searchTerms) {
+                foreach ($searchTerms as $term) {
+                    if ($term) {
+                        $q->whereRaw('LOWER(title) LIKE ?', ['%' . $term . '%']);
+                    }
+                }
+            })
             ->orderBy('created_at', 'desc')
             ->get();
+
         return new NovelCollection($novels);
     }
-
-    $searchTerms = explode(' ', strtolower($query));
-    $novels = Novel::with('genres', 'author')
-        ->where(function ($q) use ($searchTerms) {
-            foreach ($searchTerms as $term) {
-                if ($term) {
-                    $q->whereRaw('LOWER(title) LIKE ?', ['%' . $term . '%']);
-                }
-            }
-        })
-        ->orderBy('created_at', 'desc')
-        ->get();
-
-    return new NovelCollection($novels);
-}
 
     /**
      * Filter novels by genre slug.

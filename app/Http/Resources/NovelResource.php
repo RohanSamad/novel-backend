@@ -6,8 +6,32 @@ use Illuminate\Http\Resources\Json\JsonResource;
 
 class NovelResource extends JsonResource
 {
+    protected $shortQuery;
+    protected $totalChapters;
+    protected $latestChapter;
+
+    public function __construct($resource, $shortQuery = false, $totalChapters = null, $latestChapter = null)
+    {
+        parent::__construct($resource);
+        $this->shortQuery = $shortQuery;
+        $this->totalChapters = $totalChapters;
+        $this->latestChapter = $latestChapter;
+        
+        // Debug logging - remove after testing
+        \Log::info('NovelResource Debug', [
+            'totalChapters' => $totalChapters,
+            'latestChapter' => $latestChapter ? 'exists' : 'null'
+        ]);
+    }
+
     public function toArray($request)
     {
+        // Debug logging - remove after testing
+        \Log::info('NovelResource toArray', [
+            'totalChapters' => $this->totalChapters,
+            'latestChapter' => $this->latestChapter ? 'exists' : 'null'
+        ]);
+
         return [
             'id' => (int) $this->id,
             'title' => $this->title,
@@ -20,7 +44,8 @@ class NovelResource extends JsonResource
             'cover_image_url' => $this->cover_image_url ? asset($this->cover_image_url) : null,
             'synopsis' => $this->synopsis,
             'status' => $this->status,
-            'publishing_year' => $this->publishing_year, 'genres' => $this->whenLoaded('genres', fn () => $this->genres->map(function ($genre) {
+            'publishing_year' => $this->publishing_year,
+            'genres' => $this->whenLoaded('genres', fn () => $this->genres->map(function ($genre) {
                 return [
                     'id' => (int) $genre->id,
                     'name' => $genre->name,
@@ -28,17 +53,8 @@ class NovelResource extends JsonResource
                 ];
             })->toArray()),
             'chapters' => $this->whenLoaded('chapters', fn () => $this->chapters->map(function ($chapter) {
-                return [
-                    'id' => (int) $chapter->id,
-                    'chapter_number' => $chapter->chapter_number,
-                    'title' => $chapter->title,
-                    'audio_url' => $chapter->audio_url,
-                    'content_text' => $chapter->content_text,
-                    'order_index' => $chapter->order_index,
-                    'created_at' => $chapter->created_at->toIso8601String(),
-                    'updated_at' => $chapter->updated_at->toIso8601String(),
-                ];
-            })->toArray()),
+                return new ChapterResource($chapter, $this->shortQuery);
+            })),
             'ratings' => $this->whenLoaded('ratings', fn () => $this->ratings->map(function ($rating) {
                 return [
                     'id' => (int) $rating->id,
@@ -56,6 +72,8 @@ class NovelResource extends JsonResource
             ] : null),
             'created_at' => $this->created_at->toIso8601String(),
             'updated_at' => $this->updated_at->toIso8601String(),
+            'totalChapters' => $this->totalChapters,
+            'latestChapter' => $this->latestChapter ? new ChapterResource($this->latestChapter, $this->shortQuery) : null,
         ];
     }
 }

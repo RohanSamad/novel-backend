@@ -7,6 +7,7 @@ return [
     'https://noveltavern.com',
     'http://localhost:3000',
     'http://localhost:5173',
+    'https://noveltavern-seven.vercel.app/',
 ],
 
 'allowed_origins_patterns' => [],
