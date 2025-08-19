@@ -190,19 +190,22 @@ class ChapterController extends Controller
                 return response()->json(['error' => 'Novel not found'], 404);
             }
 
-            // Find chapter - tries ID first, then number, then title
+            // Find chapter - tries chapter_number first, then ID, then title
+            // Find chapter - tries chapter_number first, then ID, then title
             $chapter = Chapter::where('novel_id', $novel->id)
-                ->where(function ($query) use ($chapterId) {
-                    $query->where('id', $chapterId)
-                        ->orWhere('chapter_number', $chapterId)
-                        ->when(!is_numeric($chapterId), function ($q) use ($chapterId) {
-                            $q->orWhere('title', urldecode($chapterId));
-                        });
-                })
+                ->where('chapter_number', $chapterId)
                 ->first();
 
             if (!$chapter) {
-                return response()->json(['error' => 'Chapter not found'], 404);
+                $chapter = Chapter::where('novel_id', $novel->id)
+                    ->where('id', $chapterId)
+                    ->first();
+            }
+
+            if (!$chapter && !is_numeric($chapterId)) {
+                $chapter = Chapter::where('novel_id', $novel->id)
+                    ->where('title', urldecode($chapterId))
+                    ->first();
             }
 
             return new ChapterResource($chapter);

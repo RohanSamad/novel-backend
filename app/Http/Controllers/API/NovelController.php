@@ -105,7 +105,6 @@ class NovelController extends Controller
         }
     }
 
-
     /**
      * Fetch a single novel by ID or title with genres, author, and stats.
      *
@@ -113,79 +112,79 @@ class NovelController extends Controller
      * @return \Illuminate\Http\JsonResponse
      */
 
-public function show($id, Request $request)
-{
-    try {
-        $shortQuery = filter_var($request->query('short_query', false), FILTER_VALIDATE_BOOLEAN);
-        $chapterLimit = (int) $request->query('limit', 0);
+    public function show($id, Request $request)
+    {
+        try {
+            $shortQuery = filter_var($request->query('short_query', false), FILTER_VALIDATE_BOOLEAN);
+            $chapterLimit = (int) $request->query('limit', 0);
 
-        // Optimize chapter selection based on short_query
-        $chapterFields = $shortQuery 
-            ? ['id', 'novel_id', 'chapter_number', 'title', 'order_index', 'created_at', 'updated_at']
-            : ['*'];
+            // Optimize chapter selection based on short_query
+            $chapterFields = $shortQuery
+                ? ['id', 'novel_id', 'chapter_number', 'title', 'order_index', 'created_at', 'updated_at']
+                : ['*'];
 
-        // Build optimized chapters query
-        $chaptersQuery = function($query) use ($chapterLimit, $chapterFields) {
-            $query->select($chapterFields)
-                  ->orderBy('order_index');
-            if ($chapterLimit > 0) {
-                $query->limit($chapterLimit);
+            // Build optimized chapters query
+            $chaptersQuery = function ($query) use ($chapterLimit, $chapterFields) {
+                $query->select($chapterFields)
+                    ->orderBy('order_index');
+                if ($chapterLimit > 0) {
+                    $query->limit($chapterLimit);
+                }
+            };
+
+            // Build main query
+            if (is_numeric($id) && $id > 0) {
+                $novel = Novel::with([
+                    'genres:id,name,slug',  // Select only needed fields
+                    'author:id,name',
+                    'chapters' => $chaptersQuery,
+                    'ratings:id,user_id,rating,created_at,updated_at,novel_id',
+                    'featured:id,position,start_date,end_date,novel_id'
+                ])->find($id);
+            } else {
+                $cleanIdentifier = trim($id, '"\'');
+                $novel = Novel::with([
+                    'genres:id,name,slug',
+                    'author:id,name',
+                    'chapters' => $chaptersQuery,
+                    'ratings:id,user_id,rating,created_at,updated_at,novel_id',
+                    'featured:id,position,start_date,end_date,novel_id'
+                ])->where('title', $cleanIdentifier)
+                    ->first();
             }
-        };
 
-        // Build main query
-        if (is_numeric($id) && $id > 0) {
-            $novel = Novel::with([
-                'genres:id,name,slug',  // Select only needed fields
-                'author:id,name', 
-                'chapters' => $chaptersQuery,
-                'ratings:id,user_id,rating,created_at,updated_at,novel_id', 
-                'featured:id,position,start_date,end_date,novel_id'
-            ])->find($id);
-        } else {
-            $cleanIdentifier = trim($id, '"\'');
-            $novel = Novel::with([
-                'genres:id,name,slug',
-                'author:id,name', 
-                'chapters' => $chaptersQuery,
-                'ratings:id,user_id,rating,created_at,updated_at,novel_id', 
-                'featured:id,position,start_date,end_date,novel_id'
-            ])->where('title', $cleanIdentifier)
-              ->first();
+            if (!$novel) {
+                return response()->json(['error' => 'Novel not found'], 404);
+            }
+
+            // Efficiently get chapter stats
+            $totalChapters = null;
+            $latestChapter = null;
+
+            if ($chapterLimit > 0 && $novel->chapters->count() >= $chapterLimit) {
+                // If we hit the limit, we need separate queries for accurate totals
+                $totalChapters = \App\Models\Chapter::where('novel_id', $novel->id)->count();
+                $latestChapter = \App\Models\Chapter::select($chapterFields)
+                    ->where('novel_id', $novel->id)
+                    ->orderBy('created_at', 'desc')
+                    ->first();
+            } else {
+                // We loaded all chapters, so derive from loaded data
+                $totalChapters = $novel->chapters->count();
+                $latestChapter = $novel->chapters->sortByDesc('created_at')->first();
+            }
+
+            $stats = $this->getNovelStats($novel->id);
+
+            return response()->json([
+                'data' => new NovelResource($novel, $shortQuery, $totalChapters, $latestChapter),
+                'stats' => new NovelStatsResource($stats),
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to fetch novel', ['identifier' => $id, 'error' => $e->getMessage()]);
+            return response()->json(['error' => 'Failed to fetch novel'], 500);
         }
-
-        if (!$novel) {
-            return response()->json(['error' => 'Novel not found'], 404);
-        }
-
-        // Efficiently get chapter stats
-        $totalChapters = null;
-        $latestChapter = null;
-
-        if ($chapterLimit > 0 && $novel->chapters->count() >= $chapterLimit) {
-            // If we hit the limit, we need separate queries for accurate totals
-            $totalChapters = \App\Models\Chapter::where('novel_id', $novel->id)->count();
-            $latestChapter = \App\Models\Chapter::select($chapterFields)
-                ->where('novel_id', $novel->id)
-                ->orderBy('created_at', 'desc')
-                ->first();
-        } else {
-            // We loaded all chapters, so derive from loaded data
-            $totalChapters = $novel->chapters->count();
-            $latestChapter = $novel->chapters->sortByDesc('created_at')->first();
-        }
-
-        $stats = $this->getNovelStats($novel->id);
-
-        return response()->json([
-            'data'  => new NovelResource($novel, $shortQuery, $totalChapters, $latestChapter),
-            'stats' => new NovelStatsResource($stats),
-        ]);
-    } catch (\Exception $e) {
-        Log::error('Failed to fetch novel', ['identifier' => $id, 'error' => $e->getMessage()]);
-        return response()->json(['error' => 'Failed to fetch novel'], 500);
     }
-}
 
     /**
      * Update an existing novel.
