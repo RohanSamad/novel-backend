@@ -27,25 +27,54 @@ class NovelController extends Controller
      * @param  \App\Http\Requests\StoreNovelRequest  $request
      * @return \App\Http\Resources\NovelResource
      */
-    public function store(StoreNovelRequest $request)
-    {
+public function store(StoreNovelRequest $request)
+{
+    try {
+        Log::info('Starting novel creation process');
+        
+        $data = $request->validated();
+
+        // Check or create author
+        $author = Author::firstOrCreate(
+            ['name' => $data['author']],
+            ['name' => $data['author']]
+        );
+        $authorId = $author->id;
+        
+        Log::info('Author processed', ['author_id' => $authorId]);
+
+        // Handle cover image upload
+        $file = $request->file('cover_image');
+        
+        Log::info('File details', [
+            'original_name' => $file->getClientOriginalName(),
+            'mime_type' => $file->getMimeType(),
+            'size' => $file->getSize(),
+            'temp_path' => $file->getPathname()
+        ]);
+
+        $timestamp = time();
+        $fileExt = $file->getClientOriginalExtension();
+        $fileName = "{$timestamp}.{$fileExt}";
+        
+        Log::info('Generated filename', ['filename' => $fileName]);
+
+        // Log S3 configuration
+        $s3Config = config('filesystems.disks.s3');
+        Log::info('S3 Configuration', [
+            'endpoint' => $s3Config['endpoint'] ?? 'not set',
+            'region' => $s3Config['region'] ?? 'not set',
+            'bucket' => $s3Config['bucket'] ?? 'not set',
+            'use_path_style_endpoint' => $s3Config['use_path_style_endpoint'] ?? 'not set'
+        ]);
+
+        Log::info('Attempting S3 upload', [
+            'bucket_path' => 'novel_covers',
+            'filename' => $fileName,
+            'full_path' => "novel_covers/{$fileName}"
+        ]);
+
         try {
-            $data = $request->validated();
-
-            // Check or create author
-            $author = Author::firstOrCreate(
-                ['name' => $data['author']],
-                ['name' => $data['author']]
-            );
-            $authorId = $author->id;
-
-            // Handle cover image upload
-            $file = $request->file('cover_image');
-
-            $timestamp = time();
-            $fileExt = $file->getClientOriginalExtension();
-            $fileName = "{$timestamp}.{$fileExt}";
-
             // Upload to S3 with correct visibility and MIME type
             $path = Storage::disk('s3')->putFileAs(
                 'novel_covers',
@@ -56,36 +85,67 @@ class NovelController extends Controller
                     'ContentType' => $file->getMimeType(),
                 ]
             );
-
-            // Get full public URL from S3
-            $coverImageUrl = Storage::disk('s3')->url($path);
-
-            // Create the novel
-            $novel = Novel::create([
-                'title' => $data['title'],
-                'author' => $data['author'],
-                'author_id' => $authorId,
-                'publisher' => $data['publisher'],
-                'cover_image_url' => $coverImageUrl, // ✅ Save full URL
-                'synopsis' => $data['synopsis'],
-                'status' => $data['status'],
-                'publishing_year' => $data['publishing_year'],
+        } catch (\Aws\Exception\AwsException $awsException) {
+            Log::error('AWS S3 Exception', [
+                'aws_error_code' => $awsException->getAwsErrorCode(),
+                'aws_error_type' => $awsException->getAwsErrorType(),
+                'aws_error_message' => $awsException->getAwsErrorMessage(),
+                'status_code' => $awsException->getStatusCode(),
+                'request_id' => $awsException->getAwsRequestId()
             ]);
-
-            // Attach genres
-            $novel->genres()->attach($data['genres']);
-
-            // Load relationships for response
-            $novel->load('genres', 'author');
-
-            return new NovelResource($novel);
-
-        } catch (\Exception $e) {
-            Log::error('Failed to create novel', ['error' => $e->getMessage()]);
-            return response()->json(['error' => $e->getMessage()], 400);
+            throw $awsException;
+        } catch (\Exception $uploadException) {
+            Log::error('Upload Exception Details', [
+                'exception_class' => get_class($uploadException),
+                'message' => $uploadException->getMessage(),
+                'code' => $uploadException->getCode(),
+                'previous_exception' => $uploadException->getPrevious() ? get_class($uploadException->getPrevious()) : null,
+                'previous_message' => $uploadException->getPrevious() ? $uploadException->getPrevious()->getMessage() : null
+            ]);
+            throw $uploadException;
         }
-    }
+        
+        Log::info('S3 upload successful', ['path' => $path]);
 
+        // Get full public URL from S3
+        $coverImageUrl = Storage::disk('s3')->url($path);
+        
+        Log::info('Generated cover URL', ['url' => $coverImageUrl]);
+
+        // Create the novel
+        $novel = Novel::create([
+            'title' => $data['title'],
+            'author' => $data['author'],
+            'author_id' => $authorId,
+            'publisher' => $data['publisher'],
+            'cover_image_url' => $coverImageUrl, // ✅ Save full URL
+            'synopsis' => $data['synopsis'],
+            'status' => $data['status'],
+            'publishing_year' => $data['publishing_year'],
+        ]);
+        
+        Log::info('Novel created', ['novel_id' => $novel->id]);
+
+        // Attach genres
+        $novel->genres()->attach($data['genres']);
+
+        // Load relationships for response
+        $novel->load('genres', 'author');
+        
+        Log::info('Novel creation completed successfully');
+
+        return new NovelResource($novel);
+
+    } catch (\Exception $e) {
+        Log::error('Failed to create novel', [
+            'error' => $e->getMessage(),
+            'file' => $e->getFile(),
+            'line' => $e->getLine(),
+            'trace' => $e->getTraceAsString()
+        ]);
+        return response()->json(['error' => $e->getMessage()], 400);
+    }
+}
     /**
      * Fetch all novels with genres, ordered by created_at.
      *
@@ -288,55 +348,120 @@ class NovelController extends Controller
     // }
 
 
+public function update(Request $request, Novel $novel)
+{
+    // Add comprehensive logging
+    \Log::info('Update method called', [
+        'novel_exists' => $novel ? 'yes' : 'no',
+        'novel_id' => $novel ? $novel->id : 'null',
+        'request_route_params' => $request->route()->parameters(),
+        'request_method' => $request->method(),
+        'request_url' => $request->fullUrl()
+    ]);
 
-    public function update(Request $request, Novel $novel)
-    {
-        // Validate
-        $validated = $request->validate([
-            'title' => 'required|string|max:255',
-            'description' => 'nullable|string',
-            'cover_image' => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
+    // Check if novel exists and has ID
+    if (!$novel || !$novel->exists) {
+        \Log::error('Novel not found or does not exist', [
+            'novel' => $novel,
+            'route_params' => $request->route()->parameters()
         ]);
+        return response()->json(['error' => 'Novel not found'], 404);
+    }
 
-        // Keep old cover URL
-        $coverImageUrl = $novel->cover_image_url;
+    \Log::info('Novel found', ['id' => $novel->id, 'title' => $novel->title]);
 
-        // Handle new upload if present
-        if ($request->hasFile('cover_image')) {
-            try {
-                $file = $request->file('cover_image');
-                $fileName = time() . '_' . uniqid() . '.' . $file->getClientOriginalExtension();
+    // Validate - ADD STATUS HERE
+    $validated = $request->validate([
+        'title' => 'required|string|max:255',
+        'description' => 'nullable|string',
+        'status' => 'required|string|in:draft,published,completed,ongoing', // Add your valid status values
+        'cover_image' => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
+    ]);
 
-                if (config('filesystems.default') === 's3') {
-                    // S3 / Blackblaze B2 upload
-                    $path = $file->storeAs('novel_covers', $fileName, 's3');
+    \Log::info('Validation passed', $validated);
 
-                    if (!$path) {
-                        \Log::error('S3 upload failed: empty path returned.');
-                    } else {
-                        $coverImageUrl = Storage::disk('s3')->url($path);
-                    }
+    // Keep old cover URL
+    $coverImageUrl = $novel->cover_image_url;
+
+    // Handle new upload if present
+    if ($request->hasFile('cover_image')) { // Fixed: was 'coverimage'
+        \Log::info('File upload detected');
+        try {
+            $file = $request->file('cover_image'); // Fixed: consistent naming
+            $fileName = time() . '' . uniqid() . '.' . $file->getClientOriginalExtension();
+
+            if (config('filesystems.default') === 's3') {
+                // S3 / Blackblaze B2 upload
+                $path = $file->storeAs('novel_covers', $fileName, 's3');
+
+                if (!$path) {
+                    \Log::error('S3 upload failed: empty path returned.');
                 } else {
-                    // Local storage
-                    $path = $file->storeAs('novel_covers', $fileName, 'public');
-                    $coverImageUrl = asset('storage/' . $path);
+                    $coverImageUrl = Storage::disk('s3')->url($path);
+                    \Log::info('S3 upload successful', ['url' => $coverImageUrl]);
                 }
-            } catch (\Exception $e) {
-                \Log::error('Cover image upload failed: ' . $e->getMessage());
-                // Keep old URL if upload fails
+            } else {
+                // Local storage
+                $path = $file->storeAs('novel_covers', $fileName, 'public');
+                $coverImageUrl = asset('storage/' . $path);
+                \Log::info('Local upload successful', ['url' => $coverImageUrl]);
             }
+        } catch (\Exception $e) {
+            \Log::error('Cover image upload failed: ' . $e->getMessage());
+            // Keep old URL if upload fails
         }
+    }
 
-        // Update novel
-        $novel->update([
+    \Log::info('About to update novel', [
+        'novel_id' => $novel->id,
+        'update_data' => [
             'title' => $validated['title'],
             'description' => $validated['description'] ?? $novel->description,
+            'status' => $validated['status'], // ADD THIS
             'cover_image_url' => $coverImageUrl,
+        ]
+    ]);
+
+    // Update novel - ADD STATUS HERE
+    $novel->update([
+        'title' => $validated['title'],
+        'description' => $validated['description'] ?? $novel->description,
+        'status' => $validated['status'], // ADD THIS LINE
+        'cover_image_url' => $coverImageUrl,
+    ]);
+
+    \Log::info('Novel updated successfully', ['novel_id' => $novel->id]);
+
+    // Refresh the model to ensure we have the latest data
+    $novel->refresh();
+
+    \Log::info('About to redirect', [
+        'novel_id' => $novel->id,
+        'route_name' => 'novels.show'
+    ]);
+
+    try {
+        // Use the ID directly since your route expects {id} parameter
+        $redirectUrl = redirect()->route('novels.show', ['id' => $novel->id])
+            ->with('success', 'Novel updated successfully!');
+
+        \Log::info('Redirect URL generated successfully');
+        return $redirectUrl;
+
+    } catch (\Exception $e) {
+        \Log::error('Redirect failed', [
+            'error' => $e->getMessage(),
+            'novel_id' => $novel->id
         ]);
 
-        return redirect()->route('novels.show', $novel->id)
-            ->with('success', 'Novel updated successfully!');
+        // Fallback response
+        return response()->json([
+            'success' => true,
+            'message' => 'Novel updated successfully!',
+            'novel' => $novel
+        ]);
     }
+}
 
 
 

@@ -14,8 +14,8 @@ Route::post('/login', [UserAuthController::class, 'login']);
 Route::post('/register', [UserAuthController::class, 'register']);
 
  Route::prefix('authors')->group(function () {
-        Route::get('/', [AuthorController::class, 'index'])->name('authors.index');
-        Route::get('/{id}', [AuthorController::class, 'show'])->name('authors.show');
+     Route::get('/', [AuthorController::class, 'index'])->name('authors.index');
+     Route::get('/{id}', [AuthorController::class, 'show'])->name('authors.show');
     });
 
 
@@ -51,7 +51,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [UserAuthController::class, 'logout']);
     Route::post('/verify-admin', [UserAuthController::class, 'verifyAdmin']); 
   
-  
     // Admin-only routes
     Route::middleware('admin')->group(function () {
         Route::get('/users', [UserAuthController::class, 'fetchUsers']);
@@ -64,12 +63,27 @@ Route::middleware('auth:sanctum')->group(function () {
         });
         Route::prefix('novels')->group(function () {
             Route::post('/', [NovelController::class, 'store'])->name('novels.store');
-            Route::post('/{id}', [NovelController::class, 'update'])->name('novels.update'); // Add this
+            Route::post('/{novel}', [NovelController::class, 'update'])->name('novels.update'); // Add this
             Route::delete('/{id}', [NovelController::class, 'destroy'])->name('novels.destroy');
+            Route::delete('/novels/bulk', [NovelController::class, 'bulkDestroy']);
         });
         Route::prefix('featured-novels')->group(function () {
             Route::post('/', [FeaturedNovelController::class, 'store'])->name('featured-novels.store');
             Route::delete('/{id}', [FeaturedNovelController::class, 'destroy'])->name('featured-novels.destroy');
         });
     });
+});
+// routes/api.php
+
+// Add this route with your other novel routes
+Route::get('/novels/random-completed', [NovelController::class, 'getRandomCompleted']);
+
+// If you already have a novels resource route, make sure this comes BEFORE it:
+// Route::get('/novels/random-completed', [NovelController::class, 'getRandomCompleted']);
+// Route::resource('novels', NovelController::class);
+
+// OR if you want to group it with other novel routes:
+Route::prefix('novels')->group(function () {
+    Route::get('/random-completed', [NovelController::class, 'getRandomCompleted']);
+    // ... your other novel routes
 });
