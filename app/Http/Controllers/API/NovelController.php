@@ -217,19 +217,19 @@ public function store(StoreNovelRequest $request)
                 return response()->json(['error' => 'Novel not found'], 404);
             }
 
-            // Efficiently get chapter stats
+         
             $totalChapters = null;
             $latestChapter = null;
 
             if ($chapterLimit > 0 && $novel->chapters->count() >= $chapterLimit) {
-                // If we hit the limit, we need separate queries for accurate totals
+               
                 $totalChapters = \App\Models\Chapter::where('novel_id', $novel->id)->count();
                 $latestChapter = \App\Models\Chapter::select($chapterFields)
                     ->where('novel_id', $novel->id)
                     ->orderBy('created_at', 'desc')
                     ->first();
             } else {
-                // We loaded all chapters, so derive from loaded data
+               
                 $totalChapters = $novel->chapters->count();
                 $latestChapter = $novel->chapters->sortByDesc('created_at')->first();
             }
@@ -350,7 +350,7 @@ public function store(StoreNovelRequest $request)
 
 public function update(Request $request, Novel $novel)
 {
-    // Add comprehensive logging
+   
     \Log::info('Update method called', [
         'novel_exists' => $novel ? 'yes' : 'no',
         'novel_id' => $novel ? $novel->id : 'null',
@@ -359,7 +359,7 @@ public function update(Request $request, Novel $novel)
         'request_url' => $request->fullUrl()
     ]);
 
-    // Check if novel exists and has ID
+    
     if (!$novel || !$novel->exists) {
         \Log::error('Novel not found or does not exist', [
             'novel' => $novel,
@@ -370,28 +370,26 @@ public function update(Request $request, Novel $novel)
 
     \Log::info('Novel found', ['id' => $novel->id, 'title' => $novel->title]);
 
-    // Validate - ADD STATUS HERE
     $validated = $request->validate([
         'title' => 'required|string|max:255',
         'description' => 'nullable|string',
-        'status' => 'required|string|in:draft,published,completed,ongoing', // Add your valid status values
+        'status' => 'required|string|in:draft,published,completed,ongoing', 
         'cover_image' => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
     ]);
 
     \Log::info('Validation passed', $validated);
 
-    // Keep old cover URL
     $coverImageUrl = $novel->cover_image_url;
 
-    // Handle new upload if present
-    if ($request->hasFile('cover_image')) { // Fixed: was 'coverimage'
+   
+    if ($request->hasFile('cover_image')) { 
         \Log::info('File upload detected');
         try {
-            $file = $request->file('cover_image'); // Fixed: consistent naming
+            $file = $request->file('cover_image'); 
             $fileName = time() . '' . uniqid() . '.' . $file->getClientOriginalExtension();
 
             if (config('filesystems.default') === 's3') {
-                // S3 / Blackblaze B2 upload
+               
                 $path = $file->storeAs('novel_covers', $fileName, 's3');
 
                 if (!$path) {
@@ -401,14 +399,14 @@ public function update(Request $request, Novel $novel)
                     \Log::info('S3 upload successful', ['url' => $coverImageUrl]);
                 }
             } else {
-                // Local storage
+               
                 $path = $file->storeAs('novel_covers', $fileName, 'public');
                 $coverImageUrl = asset('storage/' . $path);
                 \Log::info('Local upload successful', ['url' => $coverImageUrl]);
             }
         } catch (\Exception $e) {
             \Log::error('Cover image upload failed: ' . $e->getMessage());
-            // Keep old URL if upload fails
+            
         }
     }
 
@@ -423,12 +421,17 @@ public function update(Request $request, Novel $novel)
     ]);
 
     // Update novel - ADD STATUS HERE
-    $novel->update([
-        'title' => $validated['title'],
-        'description' => $validated['description'] ?? $novel->description,
-        'status' => $validated['status'], // ADD THIS LINE
-        'cover_image_url' => $coverImageUrl,
-    ]);
+$novel->update([
+    'title' => $validated['title'],
+    'synopsis' => array_key_exists('description', $validated) ? $validated['description'] : $novel->synopsis, // CHANGED: description -> synopsis
+    'status' => $validated['status'],
+    'cover_image_url' => $coverImageUrl,
+]);
+
+
+
+
+
 
     \Log::info('Novel updated successfully', ['novel_id' => $novel->id]);
 
