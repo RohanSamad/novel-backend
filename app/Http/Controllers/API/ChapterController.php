@@ -276,7 +276,7 @@ class ChapterController extends Controller
             if ($request->hasFile('audio_file')) {
                 $file = $request->file('audio_file');
 
-                if ($file->getSize() > 10 * 1024 * 1024) {
+                if ($file->getSize() > 50 * 1024 * 1024) {
                     throw new \Exception('Audio size must be less than 10MB');
                 }
 
@@ -371,7 +371,7 @@ class ChapterController extends Controller
             if ($request->hasFile('audio_file')) {
                 $file = $request->file('audio_file');
 
-                if ($file->getSize() > 10 * 1024 * 1024) {
+                if ($file->getSize() > 50 * 1024 * 1024) {
                     throw new \Exception('Audio size must be less than 10MB');
                 }
 
