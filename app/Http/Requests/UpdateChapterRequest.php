@@ -25,7 +25,7 @@ class UpdateChapterRequest extends FormRequest
             'novel_id' => 'sometimes|integer|exists:novels,id',
             'chapter_number' => 'sometimes|integer|min:1',
             'title' => 'sometimes|string|max:255',
-            'audio_file' => 'nullable|file|mimes:mp3,wav|max:50240', // 50MB max
+            'audio_file' => 'nullable|file|mimes:mp3,wav,opus,m4a|max:50240', // 50MB max
             'content_text' => 'sometimes|string|min:1',
             'order_index' => 'sometimes|integer|min:1',
         ];
