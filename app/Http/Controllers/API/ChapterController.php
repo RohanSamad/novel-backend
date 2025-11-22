@@ -32,7 +32,7 @@ class ChapterController extends Controller
 
             $novel = is_numeric($novelId)
                 ? Novel::find($novelId)
-                : Novel::where('title', urldecode($novelId))->first();
+                : Novel::findBySlug($novelId);
 
             if (!$novel) {
                 return response()->json([
@@ -178,13 +178,10 @@ class ChapterController extends Controller
                 return response()->json(['error' => 'Novel and chapter identifiers are required'], 422);
             }
 
-            // Find novel - tries ID first, then title
-            $novel = Novel::when(is_numeric($novelId), function ($query) use ($novelId) {
-                return $query->where('id', $novelId);
-            }, function ($query) use ($novelId) {
-                return $query->where('title', urldecode($novelId));
-            })
-                ->first();
+            // Find novel - tries ID first, then slug-based lookup
+            $novel = is_numeric($novelId)
+                ? Novel::find($novelId)
+                : Novel::findBySlug($novelId);
 
             if (!$novel) {
                 return response()->json(['error' => 'Novel not found'], 404);
