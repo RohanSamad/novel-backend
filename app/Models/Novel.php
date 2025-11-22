@@ -63,4 +63,45 @@ class Novel extends Model
         }
         $this->attributes['status'] = $value;
     }
+
+    /**
+     * Find a novel by its slug (slugified title) or exact title.
+     * Handles both hyphen-separated slugs and space-separated titles.
+     *
+     * @param  string  $slug  The slug or title to search for
+     * @param  array   $with  Eager load relationships
+     * @return \App\Models\Novel|null
+     */
+    public static function findBySlug($slug, array $with = [])
+    {
+        // Normalize the input: remove all non-alphanumeric characters and lowercase
+        $normalizedSlug = strtolower(preg_replace('/[^a-zA-Z0-9]/', '', $slug));
+
+        // First try exact title match (for backwards compatibility)
+        $query = empty($with) ? self::query() : self::with($with);
+        $novel = $query->where('title', $slug)->first();
+
+        if ($novel) {
+            return $novel;
+        }
+
+        // Try URL decoded exact match
+        $decodedSlug = urldecode($slug);
+        $query = empty($with) ? self::query() : self::with($with);
+        $novel = $query->where('title', $decodedSlug)->first();
+
+        if ($novel) {
+            return $novel;
+        }
+
+        // Try slug-based matching: compare normalized versions
+        // This matches where the title, when stripped of non-alphanumeric chars, equals the slug
+        $query = empty($with) ? self::query() : self::with($with);
+        $novel = $query->whereRaw(
+            "LOWER(REGEXP_REPLACE(title, '[^a-zA-Z0-9]', '', 'g')) = ?",
+            [$normalizedSlug]
+        )->first();
+
+        return $novel;
+    }
 }

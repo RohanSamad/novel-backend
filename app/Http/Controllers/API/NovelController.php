@@ -192,25 +192,22 @@ public function store(StoreNovelRequest $request)
                 }
             };
 
+            // Define the relationships to eager load
+            $eagerLoad = [
+                'genres:id,name,slug',
+                'author:id,name',
+                'chapters' => $chaptersQuery,
+                'ratings:id,user_id,rating,created_at,updated_at,novel_id',
+                'featured:id,position,start_date,end_date,novel_id'
+            ];
+
             // Build main query
             if (is_numeric($id) && $id > 0) {
-                $novel = Novel::with([
-                    'genres:id,name,slug',  // Select only needed fields
-                    'author:id,name',
-                    'chapters' => $chaptersQuery,
-                    'ratings:id,user_id,rating,created_at,updated_at,novel_id',
-                    'featured:id,position,start_date,end_date,novel_id'
-                ])->find($id);
+                $novel = Novel::with($eagerLoad)->find($id);
             } else {
+                // Use slug-based lookup for non-numeric identifiers
                 $cleanIdentifier = trim($id, '"\'');
-                $novel = Novel::with([
-                    'genres:id,name,slug',
-                    'author:id,name',
-                    'chapters' => $chaptersQuery,
-                    'ratings:id,user_id,rating,created_at,updated_at,novel_id',
-                    'featured:id,position,start_date,end_date,novel_id'
-                ])->where('title', $cleanIdentifier)
-                    ->first();
+                $novel = Novel::findBySlug($cleanIdentifier, $eagerLoad);
             }
 
             if (!$novel) {
@@ -510,10 +507,10 @@ $novel->update([
                 return response()->json(['error' => 'Novel identifier is required'], 422);
             }
 
-            // Find novel by ID or title
+            // Find novel by ID or slug
             $novel = is_numeric($id)
                 ? Novel::find($id)
-                : Novel::where('title', urldecode($id))->first();
+                : Novel::findBySlug($id);
 
             if (!$novel) {
                 return response()->json([

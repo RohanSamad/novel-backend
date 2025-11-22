@@ -36,11 +36,11 @@ class NovelRatingController extends Controller
                 return response()->json(['error' => 'Unauthorized'], 401);
             }
 
-            // Find novel by ID or title
+            // Find novel by ID or slug
             $novelIdentifier = $request->input('novel_id');
-            $novel = is_numeric($novelIdentifier) 
+            $novel = is_numeric($novelIdentifier)
                 ? Novel::find($novelIdentifier)
-                : Novel::where('title', urldecode($novelIdentifier))->first();
+                : Novel::findBySlug($novelIdentifier);
 
             if (!$novel) {
                 return response()->json([
